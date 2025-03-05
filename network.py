@@ -69,8 +69,10 @@ class Network(torch.nn.Module):
 
         self.fc_t = torch.nn.Sequential(torch.nn.Linear(last_feat, 128),
                                         torch.nn.LeakyReLU(),
+                                        torch.nn.Dropout(0.5),  # JK treba mat zakomentovane ak idem bez dropoutovu povodnu neuronku
                                         torch.nn.Linear(128, 64),
                                         torch.nn.LeakyReLU(),
+                                        torch.nn.Dropout(0.5),  # JK
                                         torch.nn.Linear(64, 3))
 
     def forward(self, x):
@@ -110,6 +112,7 @@ def parse_command_line():
     parser.add_argument('-ns', '--noise_sigma', type=float, default=None)
     parser.add_argument('-ts', '--t_sigma', type=float, default=0.0)
     parser.add_argument('-rr', '--random_rot', action='store_true', default=False)
+    parser.add_argument('-wp', '--weights_path', type=str, default=None, help='Path to the model weights file') # add JK
     parser.add_argument('path')
     args = parser.parse_args()
 
@@ -118,14 +121,21 @@ def parse_command_line():
     return args
 
 
+# def load_model(args):
+#     """
+#     Loads model. If args.resum is None weights for the backbone are pre-trained on ImageNet, otherwise previous
+#     checkpoint is loaded
+#     """
+#     model = Network(backbone=args.backbone).cuda()
+#     if args.resume is not None:
+#         sd_path = 'checkpoints/{:03d}.pth'.format(args.resume)
+#         print("Resuming from: ", sd_path)
+#         model.load_state_dict(torch.load(sd_path))
+#     return model
+
 def load_model(args):
-    """
-    Loads model. If args.resum is None weights for the backbone are pre-trained on ImageNet, otherwise previous
-    checkpoint is loaded
-    """
     model = Network(backbone=args.backbone).cuda()
-    if args.resume is not None:
-        sd_path = 'checkpoints/{:03d}.pth'.format(args.resume)
-        print("Resuming from: ", sd_path)
-        model.load_state_dict(torch.load(sd_path))
+    if args.weights_path is not None:
+        print("Loading weights from: ", args.weights_path)
+        model.load_state_dict(torch.load(args.weights_path, weights_only=True))
     return model

@@ -118,9 +118,9 @@ def train(args):
                 os.mkdir('checkpoints/')
             torch.save(model.state_dict(), 'checkpoints/{:03d}.pth'.format(e))
 
-    np.set_printoptions(suppress=True)
-    np.savetxt('train_err.out', train_loss_all, delimiter=',')
-    np.savetxt('val_err.out', val_loss_all, delimiter=',')
+    # np.set_printoptions(suppress=True)
+    # np.savetxt('train_err.out', train_loss_all, delimiter=',')
+    # np.savetxt('val_err.out', val_loss_all, delimiter=',')
 
 
 if __name__ == '__main__':
