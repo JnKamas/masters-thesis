@@ -155,26 +155,26 @@ def mc_infer(args, export_to_folder=False, mc_samples=100):
                 print(pred_ts_std[i])
 
                 # For each component of the translation vector t (t[0], t[1], t[2])
-                    for j in range(3):  # j=0 for t[0], j=1 for t[1], j=2 for t[2]
-                    
-                        # Get the confidence intervals for each component of the translation vector
-                        # ci_t_lower = pred_ts_mean[i][j] - 1.96 * pred_ts_std[i][j]
-                        # ci_t_upper = pred_ts_mean[i][j] + 1.96 * pred_ts_std[i][j]
+                for j in range(3):  # j=0 for t[0], j=1 for t[1], j=2 for t[2]
+                
+                    # Get the confidence intervals for each component of the translation vector
+                    # ci_t_lower = pred_ts_mean[i][j] - 1.96 * pred_ts_std[i][j]
+                    # ci_t_upper = pred_ts_mean[i][j] + 1.96 * pred_ts_std[i][j]
 
-                        ci_t_lower = np.percentile(pred_ts_arr[i], 2.5)  # 2.5th percentile
-                        ci_t_upper = np.percentile(pred_ts_arr[i], 97.5)  # 97.5th percentile
+                    ci_t_lower = np.percentile(pred_ts_arr[i], 2.5)  # 2.5th percentile
+                    ci_t_upper = np.percentile(pred_ts_arr[i], 97.5)  # 97.5th percentile
 
 
-                        print(f"Checking coverage for t[{j}]:")
-                        print(f"CI Lower: {ci_t_lower}, CI Upper: {ci_t_upper}")
-                        print(f"GT Value: {gt_transform[j, 3]}")
+                    print(f"Checking coverage for t[{j}]:")
+                    print(f"CI Lower: {ci_t_lower}, CI Upper: {ci_t_upper}")
+                    print(f"GT Value: {gt_transform[j, 3]}")
 
-                        # Check if the ground truth value falls within the confidence interval
-                        if ci_t_lower <= gt_transform[j, 3] <= ci_t_upper:
-                            coverage_t[j] += 1
+                    # Check if the ground truth value falls within the confidence interval
+                    if ci_t_lower <= gt_transform[j, 3] <= ci_t_upper:
+                        coverage_t[j] += 1
 
-                        # Print the results for the confidence interval check
-                        print(f"Coverage for t[{j}]: {'Inside CI' if ci_t_lower <= gt_transform[j, 3] <= ci_t_upper else 'Outside CI'}")
+                    # Print the results for the confidence interval check
+                    print(f"Coverage for t[{j}]: {'Inside CI' if ci_t_lower <= gt_transform[j, 3] <= ci_t_upper else 'Outside CI'}")
 
                 # L1 loss (Mean Absolute Error) between predicted and GT translation vector
                 loss = np.mean(np.abs(gt_transform[0:3, 3] - pred_ts_mean[i]))  # L1 loss for translation
@@ -204,8 +204,6 @@ def mc_infer(args, export_to_folder=False, mc_samples=100):
 
                     export_txt_path = os.path.join(export_path, txt_dir, txt_name)
                     np.savetxt(export_txt_path, pred_ts_mean[i].T.ravel(), fmt='%1.6f', newline=' ')
-                break
-            break
 
         # Calculate and print final statistics
         if count > 0:
