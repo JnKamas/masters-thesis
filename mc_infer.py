@@ -11,6 +11,49 @@ from torch.utils.data import DataLoader
 from shutil import copyfile
 import matplotlib.pyplot as plt
 
+def plot_uncertainty(pred_samples, gt_values, save_path="uncertainty_plot.png"):
+    """Plots all MC Dropout predictions, confidence intervals, and GT values."""
+    
+    pred_samples = np.array(pred_samples)  # Shape: (mc_samples, num_samples, 3)
+    gt_values = np.array([gt.cpu().numpy() for gt in gt_values])  # Shape: (num_samples, 3)
+
+    if pred_samples.shape[0] == 0:
+        print("Error: pred_samples is empty!")
+        return
+
+    pred_means = np.mean(pred_samples, axis=0)  # Mean over MC samples
+    pred_lower = np.percentile(pred_samples, 2.5, axis=0)  # 2.5th percentile
+    pred_upper = np.percentile(pred_samples, 97.5, axis=0)  # 97.5th percentile
+
+    components = ['t[0]', 't[1]', 't[2]']
+    fig, ax = plt.subplots(1, 3, figsize=(15, 5))
+    
+    for i in range(3):  # X, Y, Z components of translation
+        num_samples = pred_samples.shape[1]
+        
+        # Scatter all predictions for visualization
+        for j in range(pred_samples.shape[0]):  # Loop over MC samples
+            ax[i].scatter(range(num_samples), pred_samples[j, :, i], color='blue', alpha=0.1, s=10)  
+
+        # Plot mean prediction
+        ax[i].plot(range(num_samples), pred_means[:, i], 'b-', label='Mean Prediction')
+
+        # Plot confidence interval
+        ax[i].fill_between(range(num_samples), pred_lower[:, i], pred_upper[:, i], color='blue', alpha=0.3, label='95% CI')
+
+        # Plot GT values
+        ax[i].scatter(range(num_samples), gt_values[:, i], color='red', label='GT', marker='x', s=50)
+
+        ax[i].set_title(f'Uncertainty in {components[i]}')
+        ax[i].set_xlabel('Sample Index')
+        ax[i].set_ylabel('Translation Value')
+        ax[i].legend()
+
+    plt.tight_layout()
+    plt.savefig(save_path)  # Save instead of show
+    print(f"Plot saved at: {save_path}")
+
+
 
 def enable_dropout(model):
     """ Function to enable dropout layers during inference """
@@ -21,7 +64,6 @@ def enable_dropout(model):
 def mc_infer(args, export_to_folder=False, mc_samples=100):
     model = load_model(args)
     enable_dropout(model)  # Keep dropout active
-    model.train()  # Set model to training mode for MC Dropout
 
     dir_path = os.path.dirname(args.path)
     val_dataset = Dataset(args.path, 'val', args.input_width, args.input_height, preload=not args.no_preload)
@@ -40,13 +82,14 @@ def mc_infer(args, export_to_folder=False, mc_samples=100):
         stds = []
 
         for sample in val_loader:
+            print(sample)
             xyz = sample['xyz'].cuda()
             gt_transforms = sample['orig_transform']
 
             # Run MC Dropout multiple times
             pred_ts_list = []
             for _ in range(mc_samples):
-                pred_zs, pred_ys, pred_ts = model(xyz)
+                pred_zs, pred_ys, pred_ts = model(xyz) # TODO also other vectors
                 pred_ts_list.append(pred_ts.cpu().numpy())
 
             # Convert list to numpy arrays
@@ -54,6 +97,8 @@ def mc_infer(args, export_to_folder=False, mc_samples=100):
 
             # Compute mean and standard deviation of the predicted translation vector
             pred_ts_mean, pred_ts_std = np.mean(pred_ts_arr, axis=0), np.std(pred_ts_arr, axis=0)
+
+            plot_uncertainty(pred_ts_arr, [gt_transform[0:3, 3] for gt_transform in gt_transforms])
 
             # Collect means and stds for the final median calculation
             means.append(pred_ts_mean)
@@ -159,7 +204,6 @@ def mc_infer(args, export_to_folder=False, mc_samples=100):
 def loss_infer(args, mc_samples=100):
     model = load_model(args)
     enable_dropout(model)  # Keep dropout active
-    model.train()  # Set model to training mode for MC Dropout
 
     val_dataset = Dataset(args.path, 'val', args.input_width, args.input_height, preload=not args.no_preload)
     val_loader = DataLoader(val_dataset, batch_size=args.batch_size, shuffle=False, num_workers=args.workers)
