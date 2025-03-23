@@ -74,7 +74,8 @@ def mc_infer(args, export_to_folder=False, mc_samples=100):
     with torch.no_grad():
         total_loss = 0
         count = 0
-        coverage_t = [0, 0, 0]  # To store coverage for each component of translation t
+        coverage_t = [0, 0, 0]  # To store coverage for each component of translation t (For GT)
+        pred_coverage_t = [0, 0, 0] # Coverage for the preditcion 
         total_variance_t = [0, 0, 0]  # To store total variance for each component of t
         total_mean_t = [0, 0, 0]  # To store total variance for each component of t
 
@@ -120,15 +121,17 @@ def mc_infer(args, export_to_folder=False, mc_samples=100):
                 # For each component of the translation vector t (t[0], t[1], t[2])
                 for j in range(3):  # j=0 for t[0], j=1 for t[1], j=2 for t[2]
                 
-                    # Get the confidence intervals for each component of the translation vector
-                    ci_t_lower = pred_ts_mean[i][j] - 1.96 * pred_ts_std[i][j]
-                    ci_t_upper = pred_ts_mean[i][j] + 1.96 * pred_ts_std[i][j]
+                    # If it is normally distributed
+                    # ci_t_lower = pred_ts_mean[i][j] - 1.96 * pred_ts_std[i][j]
+                    # ci_t_upper = pred_ts_mean[i][j] + 1.96 * pred_ts_std[i][j]
 
-                    # ci_t_lower = np.percentile(pred_ts_arr[:, i, j], 2.5)
-                    # ci_t_upper = np.percentile(pred_ts_arr[:, i, j], 97.5)
+                    # For any distribution, more difficult to cumpute
+                    ci_t_lower = np.percentile(pred_ts_arr[:, i, j], 2.5)
+                    ci_t_upper = np.percentile(pred_ts_arr[:, i, j], 97.5)
 
                     print(f"Checking coverage for t[{j}]:")
                     print(f"CI Lower: {ci_t_lower}, CI Upper: {ci_t_upper}")
+                    print(f"Pred mean: {pred_ts_mean[i, j]}")
                     print(f"GT Value: {gt_transform[j, 3]}")
 
                     # Check if the ground truth value falls within the confidence interval
@@ -136,7 +139,14 @@ def mc_infer(args, export_to_folder=False, mc_samples=100):
                         coverage_t[j] += 1
 
                     # Print the results for the confidence interval check
-                    print(f"Coverage for t[{j}]: {'Inside CI' if ci_t_lower <= gt_transform[j, 3] <= ci_t_upper else 'Outside CI'}")
+                    print(f"Coverage for GT x_{j}: {'Inside CI' if ci_t_lower <= gt_transform[j, 3] <= ci_t_upper else 'Outside CI'}")
+
+                    # Check if the ground truth value falls within the confidence interval
+                    if ci_t_lower <= pred_ts_mean[i, j] <= ci_t_upper:
+                        pred_coverage_t[j] += 1
+
+                    # Print the results for the confidence interval check
+                    print(f"Coverage for Prediction x_{j}: {'Inside CI' if ci_t_lower <= pred_ts_mean[i, j] <= ci_t_upper else 'Outside CI'}")
 
                 # L1 loss (Mean Absolute Error) between predicted and GT translation vector
                 loss = np.mean(np.abs(gt_transform[0:3, 3] - pred_ts_mean[i]))  # L1 loss for translation
@@ -166,7 +176,7 @@ def mc_infer(args, export_to_folder=False, mc_samples=100):
 
                     export_txt_path = os.path.join(export_path, txt_dir, txt_name)
                     np.savetxt(export_txt_path, pred_ts_mean[i].T.ravel(), fmt='%1.6f', newline=' ')
-            break
+            # break
 
 
         # Calculate and print final statistics
@@ -195,10 +205,15 @@ def mc_infer(args, export_to_folder=False, mc_samples=100):
             print(f"Median Uncertainty for t[1]: {median_mean_t[1]:.6f} +- {median_std_t[1]:.6f}")
             print(f"Median Uncertainty for t[2]: {median_mean_t[2]:.6f} +- {median_std_t[2]:.6f}")
 
-            print("\nCoverage for Translation Vector (T):")
+            print("\nCoverage for GT: (How well fitting are our CIs)")
             print(f"t[0] coverage: {coverage_t[0]/count}")
             print(f"t[1] coverage: {coverage_t[1]/count}")
             print(f"t[2] coverage: {coverage_t[2]/count}")
+
+            print("\nCoverage for Predictions: (Should be all 1.0)")
+            print(f"t[0] coverage: {pred_coverage_t[0]/count}")
+            print(f"t[1] coverage: {pred_coverage_t[1]/count}")
+            print(f"t[2] coverage: {pred_coverage_t[2]/count}")
 
 
 def loss_infer(args, mc_samples=100):
