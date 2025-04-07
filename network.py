@@ -57,14 +57,18 @@ class Network(torch.nn.Module):
 
         self.fc_z = torch.nn.Sequential(torch.nn.Linear(last_feat, 128),
                                         torch.nn.LeakyReLU(),
+                                        torch.nn.Dropout(0.5),  # JK treba mat zakomentovane ak idem bez dropoutovu povodnu neuronku
                                         torch.nn.Linear(128, 64),
                                         torch.nn.LeakyReLU(),
+                                        torch.nn.Dropout(0.5),  # JK
                                         torch.nn.Linear(64, 3))
 
         self.fc_y = torch.nn.Sequential(torch.nn.Linear(last_feat, 128),
                                         torch.nn.LeakyReLU(),
+                                        torch.nn.Dropout(0.5),  # JK treba mat zakomentovane ak idem bez dropoutovu povodnu neuronku
                                         torch.nn.Linear(128, 64),
                                         torch.nn.LeakyReLU(),
+                                        torch.nn.Dropout(0.5),  # JK
                                         torch.nn.Linear(64, 3))
 
         self.fc_t = torch.nn.Sequential(torch.nn.Linear(last_feat, 128),
