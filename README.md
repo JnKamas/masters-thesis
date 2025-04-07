@@ -1,3 +1,7 @@
+# info
+This folder is fork of original repo (even tho its not dsplayed as a fork)
+the text below is old readme. new readme will be done later
+
 # bin-detect
 6D Bin Pose Estimation - Baseline Network VISIGRAPP 2021
 
