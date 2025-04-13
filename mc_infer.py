@@ -149,10 +149,14 @@ def mc_infer(args, export_to_folder=False, mc_samples=100):
                 if lower <= 0.0 <= upper:
                     rotation_ci_coverage += 1
 
-                print(f"Rotation uncertainty for sample {i}:")
-                print(f"  Mean angular error: {np.mean(angles):.4f} rad / {np.degrees(np.mean(angles)):.2f}°")
-                print(f"  Std angular error: {np.std(angles):.4f} rad / {np.degrees(np.std(angles)):.2f}°")
-                print(f"  CI: [{lower:.4f}, {upper:.4f}] rad -> GT in CI: {'Yes' if lower <= 0 <= upper else 'No'}")
+                mean_angle = np.mean(angles)
+                std_angle = np.std(angles)
+
+                rotation_errors.append(mean_angle)
+
+                print(f"Rotation error stats for sample {i}:")
+                print(f"  Mean angular error: {mean_angle:.4f} rad / {np.degrees(mean_angle):.2f}°")
+                print(f"  Std angular error: {std_angle:.4f} rad / {np.degrees(std_angle):.2f}°")
 
                 txt_path = sample['txt_path'][i]
                 txt_name = 'prediction_{}'.format(os.path.basename(txt_path)).replace("\\", '/')
@@ -183,15 +187,10 @@ def mc_infer(args, export_to_folder=False, mc_samples=100):
                 rotation_errors = np.array(rotation_errors)
                 mean_rot_error = np.mean(rotation_errors)
                 std_rot_error = np.std(rotation_errors)
-                ci_lower = np.percentile(rotation_errors, 2.5)
-                ci_upper = np.percentile(rotation_errors, 97.5)
-                rot_coverage_ratio = rotation_ci_coverage / count
 
-                print("\nRotation Uncertainty Summary:")
+                print("\nRotation Error Summary:")
                 print(f"Mean Angular Error: {mean_rot_error:.4f} rad / {np.degrees(mean_rot_error):.2f}°")
                 print(f"Std Angular Error: {std_rot_error:.4f} rad / {np.degrees(std_rot_error):.2f}°")
-                print(f"95% CI of angular errors: [{ci_lower:.4f}, {ci_upper:.4f}] rad")
-                print(f"Coverage of GT rotation within sample-wise CIs: {rot_coverage_ratio:.3f}")
 
 if __name__ == '__main__':
     args = parse_command_line()
