@@ -122,7 +122,6 @@ def train(args):
     # np.savetxt('train_err.out', train_loss_all, delimiter=',')
     # np.savetxt('val_err.out', val_loss_all, delimiter=',')
 
-
 if __name__ == '__main__':
     """
     Example usage: python train.py -iw 1032 -ih 772 -b 12 -e 500 -de 10 -lr 1e-3 -bb resnet34 -w 0.1 /path/to/MLBinsDataset/EXR/dataset.json
