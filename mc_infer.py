@@ -32,7 +32,7 @@ def compute_rotation_spread(rotation_matrices):
         R2 = R.from_matrix(rotation_matrices[j])
         relative_rotation = R1.inv() * R2
         angles.append(relative_rotation.magnitude())
-    return np.mean(angles) if angles else 0.0
+    return (angles, np.mean(angles)) if angles else 0.0
 
 
 def estimate_rotation_entropy(rotation_matrices, bins=30):
@@ -75,43 +75,66 @@ def plot_translation_uncertainty(pred_samples, gt_values, save_path="uncertainty
     plt.close()
 
 
-def plot_rotation_metrics(spread_list, entropy_list, angles_samples=None, save_path="uncertainty_rotation.png"):
-    num_plots = 3 if angles_samples is not None else 2
+def plot_rotation_metrics(spread_list, entropy_list, angles_samples, angles_between, save_path="uncertainty_rotation.png"):
+    """
+    Plots rotation uncertainty metrics:
+    - Spread and detailed dispersion
+    - Entropy
+    - Angular errors to GT
+    """
+    num_plots = 3
     fig, ax = plt.subplots(num_plots, 1, figsize=(10, 4 * num_plots))
+    plot_idx = 0
 
-    if not isinstance(ax, np.ndarray):
-        ax = [ax]
+    # Plot spread and detailed angles_between together
+    if angles_between is not None:
+        dispersion_means = []
+        for sample_idx, dispersions in enumerate(angles_between):
+            sample_idx_array = np.full_like(dispersions, sample_idx)
+            ax[plot_idx].scatter(sample_idx_array, dispersions, color='red', alpha=0.1, s=10, label='Pairwise Angles' if sample_idx == 0 else "")
+            dispersion_means.append(np.mean(dispersions))
+        
+        # Mean of dispersions (small red dots)
+        ax[plot_idx].scatter(range(len(dispersion_means)), dispersion_means, color='darkred', marker='x', s=50, label='Mean Pairwise Angle')
 
-    ax[0].plot(spread_list, 'g.-')
-    ax[0].set_title('Sample Spread per Sample')
-    ax[0].set_xlabel('Sample Index')
-    ax[0].set_ylabel('Spread (radians)')
+    # Spread line (green)
+    ax[plot_idx].plot(range(len(spread_list)), spread_list, 'g.-', label='Sample Spread')
+    ax[plot_idx].set_title('Rotation Spread and Dispersion per Sample')
+    ax[plot_idx].set_xlabel('Sample Index')
+    ax[plot_idx].set_ylabel('Angular Distance (radians)')
+    ax[plot_idx].set_xticks(range(len(spread_list)))  # Force discrete ticks at sample points
+    ax[plot_idx].set_ylim(0, np.pi)
+    ax[plot_idx].legend()
+    plot_idx += 1
 
-    ax[1].plot(entropy_list, 'm.-')
-    ax[1].set_title('Rotation Entropy-like Measure per Sample')
-    ax[1].set_xlabel('Sample Index')
-    ax[1].set_ylabel('Entropy (a.u.)')
+    # Plot entropy
+    ax[plot_idx].plot(range(len(entropy_list)), entropy_list, 'm.-')
+    ax[plot_idx].set_title('Rotation Entropy-like Measure per Sample')
+    ax[plot_idx].set_xlabel('Sample Index')
+    ax[plot_idx].set_ylabel('Entropy (a.u.)')
+    ax[plot_idx].set_xticks(range(len(entropy_list)))
+    plot_idx += 1
 
+    # Plot angular errors to GT if available
     if angles_samples is not None:
-        angles_samples = np.array(angles_samples)  # shape (N_samples, N_points)
+        angles_samples = np.array(angles_samples).T
         angles_mean = np.mean(angles_samples, axis=0)
         angles_lower = np.percentile(angles_samples, 2.5, axis=0)
         angles_upper = np.percentile(angles_samples, 97.5, axis=0)
 
         for j in range(angles_samples.shape[0]):
-            ax[2].scatter(range(angles_samples.shape[1]), angles_samples[j, :], color='blue', alpha=0.1, s=10)
-        ax[2].plot(range(angles_mean.shape[0]), angles_mean, 'b-', label='Mean Angular Error')
-        ax[2].fill_between(range(angles_mean.shape[0]), angles_lower, angles_upper, color='blue', alpha=0.3, label='95% CI')
-        ax[2].set_title('Rotation Uncertainty (Angular Errors)')
-        ax[2].set_xlabel('Sample Index')
-        ax[2].set_ylabel('Angular Error (radians)')
-        ax[2].legend()
+            ax[plot_idx].scatter(range(angles_samples.shape[1]), angles_samples[j, :], color='blue', alpha=0.1, s=10)
+        ax[plot_idx].plot(range(angles_mean.shape[0]), angles_mean, 'b-', label='Mean Angular Error')
+        ax[plot_idx].fill_between(range(angles_mean.shape[0]), angles_lower, angles_upper, color='blue', alpha=0.3, label='95% CI')
+        ax[plot_idx].set_title('Rotation Uncertainty (Angular Errors to GT)')
+        ax[plot_idx].set_xlabel('Sample Index')
+        ax[plot_idx].set_ylabel('Angular Error (radians)')
+        ax[plot_idx].set_xticks(range(angles_mean.shape[0]))
+        ax[plot_idx].legend()
 
     plt.tight_layout()
     plt.savefig(save_path)
     plt.close()
-
-
 
 def mc_infer(args, export_to_folder=False, mc_samples=100):
     model = load_model(args)
@@ -131,6 +154,7 @@ def mc_infer(args, export_to_folder=False, mc_samples=100):
     spread_list = []
     entropy_list = []
     angles_samples = [] # to visualize the spread of angles
+    pairwise_angles_list = [] # to visualize the spread of angles between samples
 
     with torch.no_grad():
         for samle_idx, sample in enumerate(val_loader):
@@ -173,10 +197,12 @@ def mc_infer(args, export_to_folder=False, mc_samples=100):
                 angles = [R.from_matrix(rot).inv() * R.from_matrix(gt_rot) for rot in rotation_matrices]
                 angles = np.array([r.magnitude() for r in angles])
                 rotation_errors.append(np.mean(angles))
-
-                spread_list.append(compute_rotation_spread(np.stack(rotation_matrices)))
+                
+                pairwise_angles, angles_between_mean = compute_rotation_spread(np.stack(rotation_matrices)) # angles between samples
+                spread_list.append(angles_between_mean)
                 entropy_list.append(estimate_rotation_entropy(np.stack(rotation_matrices)))
                 angles_samples.append(angles)
+                pairwise_angles_list.append(np.array(pairwise_angles))
 
                 print(40 * "-")
                 print(f"Sample {i} Translation:")
@@ -193,8 +219,32 @@ def mc_infer(args, export_to_folder=False, mc_samples=100):
                 print(f"Sample {i} Entropy: {entropy_list[-1]:.4f}")
                 print(40 * "-")
 
+            def check_inputs(spread_list, entropy_list, angles_samples=None, angles_between=None):
+                print("Spread list:")
+                print(f"  Type: {type(spread_list)}, Length: {len(spread_list)}")
+                print()
+
+                print("Entropy list:")
+                print(f"  Type: {type(entropy_list)}, Length: {len(entropy_list)}")
+                print()
+
+                if angles_samples is not None:
+                    print("Angles to GT (angles_samples):")
+                    print(f"  Type: {type(angles_samples)}, Shape: {np.array(angles_samples).shape}")
+                    print()
+
+                if angles_between is not None:
+                    print("Angles Between (pairwise):")
+                    print(f"  Type: {type(angles_between)}, Length: {len(angles_between)} (should be number of samples)")
+                    for idx, arr in enumerate(angles_between):
+                        print(f"    Sample {idx}: Type {type(arr)}, Shape {arr.shape}")
+
+            # Example usage
+            check_inputs(spread_list, entropy_list, angles_samples, pairwise_angles_list)
+
+
             plot_translation_uncertainty(pred_ts_arr, [gt_transform[0:3, 3] for gt_transform in gt_transforms])
-            plot_rotation_metrics(spread_list, entropy_list, angles_samples=angles_samples)
+            plot_rotation_metrics(spread_list, entropy_list, angles_samples=angles_samples, angles_between=pairwise_angles_list)
             break
 
     avg_loss = total_loss / count
