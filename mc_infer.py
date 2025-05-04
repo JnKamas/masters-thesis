@@ -219,33 +219,8 @@ def mc_infer(args, export_to_folder=False, mc_samples=100):
                 print(f"Sample {i} Entropy: {entropy_list[-1]:.4f}")
                 print(40 * "-")
 
-            def check_inputs(spread_list, entropy_list, angles_samples=None, angles_between=None):
-                print("Spread list:")
-                print(f"  Type: {type(spread_list)}, Length: {len(spread_list)}")
-                print()
-
-                print("Entropy list:")
-                print(f"  Type: {type(entropy_list)}, Length: {len(entropy_list)}")
-                print()
-
-                if angles_samples is not None:
-                    print("Angles to GT (angles_samples):")
-                    print(f"  Type: {type(angles_samples)}, Shape: {np.array(angles_samples).shape}")
-                    print()
-
-                if angles_between is not None:
-                    print("Angles Between (pairwise):")
-                    print(f"  Type: {type(angles_between)}, Length: {len(angles_between)} (should be number of samples)")
-                    for idx, arr in enumerate(angles_between):
-                        print(f"    Sample {idx}: Type {type(arr)}, Shape {arr.shape}")
-
-            # Example usage
-            check_inputs(spread_list, entropy_list, angles_samples, pairwise_angles_list)
-
-
             plot_translation_uncertainty(pred_ts_arr, [gt_transform[0:3, 3] for gt_transform in gt_transforms])
             plot_rotation_metrics(spread_list, entropy_list, angles_samples=angles_samples, angles_between=pairwise_angles_list)
-            break
 
     avg_loss = total_loss / count
     avg_variance_t = total_variance_t / count
