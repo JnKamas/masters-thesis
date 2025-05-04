@@ -156,23 +156,25 @@ def mc_infer(args, export_to_folder=False, mc_samples=100):
                 spread_list.append(compute_rotation_spread(np.stack(rotation_matrices)))
                 entropy_list.append(estimate_rotation_entropy(np.stack(rotation_matrices)))
 
+                print(40 * "-")
+                print(f"Sample {i} Translation:")
+                for j in range(3):
+                    print(f" t[{j}] Mean: {pred_ts_mean[i, j]:.4f}, Std: {pred_ts_std[i, j]:.4f}")
+
+                print(f"Sample {i} Loss (L1): {loss:.6f}")
+
+                print(f"Sample {i} Rotation:")
+                print(f"  Mean Angular Error: {np.mean(angles):.4f} rad / {np.degrees(np.mean(angles)):.2f}°")
+                print(f"  Std Angular Error: {np.std(angles):.4f} rad / {np.degrees(np.std(angles)):.2f}°")
+
+                print(f"Sample {i} Spread: {spread_list[-1]:.4f} rad / {np.degrees(spread_list[-1]):.2f}°")
+                print(f"Sample {i} Entropy: {entropy_list[-1]:.4f}")
+                print(40 * "-")
+
             plot_translation_uncertainty(pred_ts_arr, [gt_transform[0:3, 3] for gt_transform in gt_transforms])
             plot_rotation_metrics(spread_list, entropy_list)
 
-            print(40 * "-")
-            print(f"Sample {samle_idx} Translation:")
-            for j in range(3):
-                print(f" t[{j}] Mean: {pred_ts_mean[i, j]:.4f}, Std: {pred_ts_std[i, j]:.4f}")
 
-            print(f"Sample {samle_idx} Loss (L1): {loss:.6f}")
-
-            print(f"Sample {samle_idx} Rotation:")
-            print(f"  Mean Angular Error: {np.mean(angles):.4f} rad / {np.degrees(np.mean(angles)):.2f}°")
-            print(f"  Std Angular Error: {np.std(angles):.4f} rad / {np.degrees(np.std(angles)):.2f}°")
-
-            print(f"Sample {samle_idx} Spread: {spread_list[-1]:.4f} rad / {np.degrees(spread_list[-1]):.2f}°")
-            print(f"Sample {samle_idx} Entropy: {entropy_list[-1]:.4f}")
-            print(40 * "-")
 
             break
 
@@ -194,6 +196,13 @@ def mc_infer(args, export_to_folder=False, mc_samples=100):
     print(f"\nMean Rotation Sample Spread: {mean_spread:.4f} rad / {np.degrees(mean_spread):.2f}°")
     print(f"Mean Rotation Entropy-like Measure: {mean_entropy:.4f}")
 
+    print("\nCoverage for Translation Vector (T):")
+    for j in range(3):
+        print(f"t[{j}]: {coverage_t[j] / count:.4f} (GT) / {pred_coverage_t[j] / count:.4f} (Pred)")
+    if export_to_folder:
+        os.makedirs(dir_path, exist_ok=True)
+        plot_translation_uncertainty(pred_ts_arr, [gt_transform[0:3, 3] for gt_transform in gt_transforms], os.path.join(dir_path, "uncertainty_translation.png"))
+        plot_rotation_metrics(spread_list, entropy_list, os.path.join(dir_path, "uncertainty_rotation.png"))
 
 if __name__ == '__main__':
     args = parse_command_line()
