@@ -75,8 +75,12 @@ def plot_translation_uncertainty(pred_samples, gt_values, save_path="uncertainty
     plt.close()
 
 
-def plot_rotation_metrics(spread_list, entropy_list, save_path="uncertainty_rotation.png"):
-    fig, ax = plt.subplots(2, 1, figsize=(10, 8))
+def plot_rotation_metrics(spread_list, entropy_list, angles_samples=None, save_path="uncertainty_rotation.png"):
+    num_plots = 3 if angles_samples is not None else 2
+    fig, ax = plt.subplots(num_plots, 1, figsize=(10, 4 * num_plots))
+
+    if not isinstance(ax, np.ndarray):
+        ax = [ax]
 
     ax[0].plot(spread_list, 'g.-')
     ax[0].set_title('Sample Spread per Sample')
@@ -88,9 +92,25 @@ def plot_rotation_metrics(spread_list, entropy_list, save_path="uncertainty_rota
     ax[1].set_xlabel('Sample Index')
     ax[1].set_ylabel('Entropy (a.u.)')
 
+    if angles_samples is not None:
+        angles_samples = np.array(angles_samples)  # shape (N_samples, N_points)
+        angles_mean = np.mean(angles_samples, axis=0)
+        angles_lower = np.percentile(angles_samples, 2.5, axis=0)
+        angles_upper = np.percentile(angles_samples, 97.5, axis=0)
+
+        for j in range(angles_samples.shape[0]):
+            ax[2].scatter(range(angles_samples.shape[1]), angles_samples[j, :], color='blue', alpha=0.1, s=10)
+        ax[2].plot(range(angles_mean.shape[0]), angles_mean, 'b-', label='Mean Angular Error')
+        ax[2].fill_between(range(angles_mean.shape[0]), angles_lower, angles_upper, color='blue', alpha=0.3, label='95% CI')
+        ax[2].set_title('Rotation Uncertainty (Angular Errors)')
+        ax[2].set_xlabel('Sample Index')
+        ax[2].set_ylabel('Angular Error (radians)')
+        ax[2].legend()
+
     plt.tight_layout()
     plt.savefig(save_path)
     plt.close()
+
 
 
 def mc_infer(args, export_to_folder=False, mc_samples=100):
@@ -110,6 +130,7 @@ def mc_infer(args, export_to_folder=False, mc_samples=100):
     rotation_errors = []
     spread_list = []
     entropy_list = []
+    angles_samples = [] # to visualize the spread of angles
 
     with torch.no_grad():
         for samle_idx, sample in enumerate(val_loader):
@@ -155,6 +176,7 @@ def mc_infer(args, export_to_folder=False, mc_samples=100):
 
                 spread_list.append(compute_rotation_spread(np.stack(rotation_matrices)))
                 entropy_list.append(estimate_rotation_entropy(np.stack(rotation_matrices)))
+                angles_samples.append(angles)
 
                 print(40 * "-")
                 print(f"Sample {i} Translation:")
@@ -172,10 +194,7 @@ def mc_infer(args, export_to_folder=False, mc_samples=100):
                 print(40 * "-")
 
             plot_translation_uncertainty(pred_ts_arr, [gt_transform[0:3, 3] for gt_transform in gt_transforms])
-            plot_rotation_metrics(spread_list, entropy_list)
-
-
-
+            plot_rotation_metrics(spread_list, entropy_list, angles_samples=angles_samples)
             break
 
     avg_loss = total_loss / count
