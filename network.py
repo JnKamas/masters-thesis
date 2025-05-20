@@ -117,6 +117,7 @@ def parse_command_line():
     parser.add_argument('-ts', '--t_sigma', type=float, default=0.0)
     parser.add_argument('-rr', '--random_rot', action='store_true', default=False)
     parser.add_argument('-wp', '--weights_path', type=str, default=None, help='Path to the model weights file') # add JK
+    parser.add_argument('-vis', '--visualize', action='store_true', default=False, help='Visualize the model predictions into a file') # add JK
     parser.add_argument('path')
     args = parser.parse_args()
 
@@ -140,6 +141,7 @@ def parse_command_line():
 def load_model(args):
     model = Network(backbone=args.backbone).cuda()
     if args.weights_path is not None:
-        print("Loading weights from: ", args.weights_path)
-        model.load_state_dict(torch.load(args.weights_path, weights_only=True))
+        print("Loading weights from:", args.weights_path)
+        state_dict = torch.load(args.weights_path)
+        model.load_state_dict(state_dict, strict=False)  # strict=False to allow missing weights like dropout
     return model
