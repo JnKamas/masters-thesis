@@ -63,3 +63,31 @@ def plot_rotation_metrics(spread_list, entropy_list, orth_dev_list, det_dev_list
     plt.savefig(save_path)
     plt.close()
 
+def plot_translation_uncertainty(pred_samples, gt_values, save_path="uncertainty_translation.png"):
+    pred = np.array(pred_samples)
+    # gt_values may be list of tensors or ndarrays
+    gt_list = []
+    for gt in gt_values:
+        if hasattr(gt, 'cpu'):
+            gt_list.append(gt.cpu().numpy())
+        else:
+            gt_list.append(gt)
+    gt_arr = np.array(gt_list)
+
+    means = pred.mean(axis=0)
+    lower = np.percentile(pred, 2.5, axis=0)
+    upper = np.percentile(pred, 97.5, axis=0)
+
+    comps = ['t[0]', 't[1]', 't[2]']
+    fig, ax = plt.subplots(1, 3, figsize=(15, 5))
+    for i in range(3):
+        for s in range(pred.shape[0]):
+            ax[i].scatter(range(pred.shape[1]), pred[s, :, i], color='blue', alpha=0.1, s=10)
+        ax[i].plot(means[:, i], 'b-', label='Mean')
+        ax[i].fill_between(range(means.shape[0]), lower[:, i], upper[:, i], color='blue', alpha=0.3)
+        ax[i].scatter(range(gt_arr.shape[0]), gt_arr[:, i], color='red', marker='x', s=50, label='GT')
+        ax[i].set_title(f'Uncertainty in {comps[i]}')
+        ax[i].legend()
+    plt.tight_layout()
+    plt.savefig(save_path)
+    plt.close()
