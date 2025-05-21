@@ -39,7 +39,7 @@ def bayesian_combined_loss(preds, targets):
 
 
 def train(args):
-    model = load_model(args)
+    model = load_model(args, modifications=args.modifications)
     train_dataset = Dataset(args.path, 'train', args.input_width, args.input_height, noise_sigma=args.noise_sigma, t_sigma=args.t_sigma, random_rot=args.random_rot, preload=not args.no_preload)
     train_loader = DataLoader(train_dataset, batch_size=args.batch_size, shuffle=True, num_workers=args.workers)
 

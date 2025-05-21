@@ -41,7 +41,7 @@ def normalized_l2_loss(pred, gt, reduce=True):
 
 @variational_estimator
 class Network(torch.nn.Module):
-    def __init__(self, backbone='resnet18', modifications=0):
+    def __init__(self, backbone='resnet18', modifications=None):
         super(Network, self).__init__()
 
         if backbone == 'resnet18':
@@ -56,7 +56,7 @@ class Network(torch.nn.Module):
         self.backbone = torch.nn.Sequential(*list(pretrained_backbone_model.children())[:-3])
         # print(list(pretrained_backbone_model.children())[0])
         # self.init_conv = torch.nn.Conv2d(3, 64, (11, 11), (5, 5))
-        if modifications == 1:
+        if modifications == "mc_dropout":
             self.fc_z = torch.nn.Sequential(
                 torch.nn.Linear(last_feat, 128),
                 torch.nn.LeakyReLU(),
@@ -86,7 +86,7 @@ class Network(torch.nn.Module):
                 torch.nn.Dropout(0.5),
                 torch.nn.Linear(64, 3)
             )
-        elif modifications == 2:
+        elif modifications == "bayesian":
             self.fc_z = torch.nn.Sequential(
                 torch.nn.Linear(last_feat, 128),
                 torch.nn.LeakyReLU(),
@@ -172,7 +172,7 @@ def parse_command_line():
     parser.add_argument('-rr', '--random_rot', action='store_true', default=False)
     parser.add_argument('-wp', '--weights_path', type=str, default=None, help='Path to the model weights file') # add JK
     parser.add_argument('-vis', '--visualize', action='store_true', default=False, help='Visualize the model predictions into a file') # add JK
-    parser.add_argument('-mod', '--modifications', type=int, default=0, help='Modifications to the model: mc_dropout=1, bayesian=2') # add JK
+    parser.add_argument('-mod', '--modifications', type=int, default=None, help='Modifications to the model: mc_dropout, bayesian') # add JK
     parser.add_argument('path')
     args = parser.parse_args()
 

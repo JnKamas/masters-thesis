@@ -11,6 +11,10 @@ from torch.utils.data import DataLoader
 from shutil import copyfile
 import matplotlib.pyplot as plt
 
+def enable_dropout(model):
+    for module in model.modules():
+        if isinstance(module, torch.nn.Dropout):
+            module.train()
 
 def infer(args, export_to_folder=True):
     model = load_model(args).eval()
@@ -23,8 +27,8 @@ def infer(args, export_to_folder=True):
     np.set_printoptions(suppress=True)
 
     with torch.no_grad():
-        total_loss = 0  # To accumulate loss across samples
-        count = 0
+        if args.modifications == "mc_dropout":
+            enable_dropout(model)
 
         for sample in val_loader:
             pred_zs, pred_ys, pred_ts = model(sample['xyz'].cuda())
@@ -66,7 +70,7 @@ def infer(args, export_to_folder=True):
                 # Save prediction to original dataset folder
                 save_txt_path = os.path.join(dir_path, txt_dir, txt_name)
                 os.makedirs(os.path.dirname(save_txt_path), exist_ok=True)
-                np.savetxt(save_txt_path, transform.T.ravel(), fmt='%1.6f', newline=' ')
+                # np.savetxt(save_txt_path, transform.T.ravel(), fmt='%1.6f', newline=' ')
 
                 if export_to_folder:
                     """
@@ -87,7 +91,7 @@ def infer(args, export_to_folder=True):
                     np.savetxt(export_pred_path, transform.T.ravel(), fmt='%1.6f', newline=' ')
 
                     # WE DO NOT COPY COGS...
-                    
+
                     # # 3. Copy scan's .cogs file if it exists
                     # scan_name = txt_name[11:-4] + '.cogs'
                     # scan_cogs_src = os.path.join(dir_path, txt_dir, scan_name)
