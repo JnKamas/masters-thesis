@@ -31,7 +31,22 @@ def infer(args, export_to_folder=True):
             enable_dropout(model)
 
         for sample in val_loader:
-            pred_zs, pred_ys, pred_ts = model(sample['xyz'].cuda())
+            if args.modifications == "mc_dropout":
+                mc_pred_zs, mc_pred_ys, mc_pred_ts = [], [], []
+                for _ in range(args.mc_samples):
+                    z, y, t = model(sample['xyz'].cuda())
+                    mc_pred_zs.append(z.cpu().numpy())
+                    mc_pred_ys.append(y.cpu().numpy())
+                    mc_pred_ts.append(t.cpu().numpy())
+
+                pred_zs = np.mean(np.stack(mc_pred_zs), axis=0)
+                pred_ys = np.mean(np.stack(mc_pred_ys), axis=0)
+                pred_ts = np.mean(np.stack(mc_pred_ts), axis=0)
+            else:
+                pred_zs, pred_ys, pred_ts = model(sample['xyz'].cuda())
+                pred_zs = pred_zs.cpu().numpy()
+                pred_ys = pred_ys.cpu().numpy()
+                pred_ts = pred_ts.cpu().numpy()
             gt_transforms = sample['orig_transform']
 
             for i in range(len(pred_zs)):
@@ -41,10 +56,10 @@ def infer(args, export_to_folder=True):
                 print("Det: ", np.linalg.det(gt_transform))
                 print(gt_transform)
 
-                z = pred_zs[i].cpu().numpy()
+                z = pred_zs[i]
                 z /= np.linalg.norm(z)
 
-                y = pred_ys[i].cpu().numpy()
+                y = pred_ys[i]
                 y = y - np.dot(z, y) * z
                 y /= np.linalg.norm(y)
 
@@ -55,7 +70,7 @@ def infer(args, export_to_folder=True):
                 transform[:3, 1] = y
                 transform[:3, 2] = z
 
-                transform[:3, 3] = pred_ts[i].cpu().numpy()
+                transform[:3, 3] = pred_ts[i]
                 transform[3, 3] = 1
                 print("Predict:")
                 print("Det: ", np.linalg.det(transform))

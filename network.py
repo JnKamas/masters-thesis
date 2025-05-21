@@ -172,7 +172,8 @@ def parse_command_line():
     parser.add_argument('-rr', '--random_rot', action='store_true', default=False)
     parser.add_argument('-wp', '--weights_path', type=str, default=None, help='Path to the model weights file') # add JK
     parser.add_argument('-vis', '--visualize', action='store_true', default=False, help='Visualize the model predictions into a file') # add JK
-    parser.add_argument('-mod', '--modifications', type=int, default=None, help='Modifications to the model: mc_dropout, bayesian') # add JK
+    parser.add_argument('-mod', '--modifications', type=str, default=None, help='Modifications to the model: mc_dropout, bayesian') # add JK
+    parser.add_argument('-mc', '--mc_samples', type=int, default=10, help='Number of Monte Carlo samples for uncertainty estimation') # add JK
     parser.add_argument('path')
     args = parser.parse_args()
 

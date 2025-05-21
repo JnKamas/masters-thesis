@@ -39,7 +39,7 @@ def bayesian_combined_loss(preds, targets):
 
 
 def train(args):
-    model = load_model(args, modifications=args.modifications)
+    model = load_model(args)
     train_dataset = Dataset(args.path, 'train', args.input_width, args.input_height, noise_sigma=args.noise_sigma, t_sigma=args.t_sigma, random_rot=args.random_rot, preload=not args.no_preload)
     train_loader = DataLoader(train_dataset, batch_size=args.batch_size, shuffle=True, num_workers=args.workers)
 
@@ -147,9 +147,9 @@ def train(args):
                 os.mkdir('checkpoints/')
             torch.save(model.state_dict(), 'checkpoints/{:03d}.pth'.format(e))
 
-    np.set_printoptions(suppress=True)
-    np.savetxt('train_err.out', train_loss_all, delimiter=',')
-    np.savetxt('val_err.out', val_loss_all, delimiter=',')
+    # np.set_printoptions(suppress=True)
+    # np.savetxt('train_err.out', train_loss_all, delimiter=',')
+    # np.savetxt('val_err.out', val_loss_all, delimiter=',')
 
 if __name__ == '__main__':
     """
