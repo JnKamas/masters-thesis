@@ -86,45 +86,21 @@ def infer(args, export_to_folder=True):
                     export_pred_path = os.path.join(export_subdir, txt_name)
                     np.savetxt(export_pred_path, transform.T.ravel(), fmt='%1.6f', newline=' ')
 
-                    # 3. Copy scan's .cogs file if it exists
-                    scan_name = txt_name[11:-4] + '.cogs'
-                    scan_cogs_src = os.path.join(dir_path, txt_dir, scan_name)
-                    scan_cogs_dst = os.path.join(export_subdir, scan_name)
-                    if os.path.exists(scan_cogs_src) and not os.path.exists(scan_cogs_dst):
-                        copyfile(scan_cogs_src, scan_cogs_dst)
+                    # WE DO NOT COPY COGS...
+                    
+                    # # 3. Copy scan's .cogs file if it exists
+                    # scan_name = txt_name[11:-4] + '.cogs'
+                    # scan_cogs_src = os.path.join(dir_path, txt_dir, scan_name)
+                    # scan_cogs_dst = os.path.join(export_subdir, scan_name)
+                    # if os.path.exists(scan_cogs_src) and not os.path.exists(scan_cogs_dst):
+                    #     copyfile(scan_cogs_src, scan_cogs_dst)
 
-                    # 4. Copy bin.stl if it exists
-                    bin_src = os.path.join(dir_path, txt_dir, 'bin.stl')
-                    bin_dst = os.path.join(export_subdir, 'bin.stl')
-                    if os.path.exists(bin_src) and not os.path.exists(bin_dst):
-                        copyfile(bin_src, bin_dst)
+                    # # 4. Copy bin.stl if it exists
+                    # bin_src = os.path.join(dir_path, txt_dir, 'bin.stl')
+                    # bin_dst = os.path.join(export_subdir, 'bin.stl')
+                    # if os.path.exists(bin_src) and not os.path.exists(bin_dst):
+                    #     copyfile(bin_src, bin_dst)
 
-                # THIS IS OLD, FROM THE ORIGINAL EVALUATE. FDONT FORGET TO FIX THE SLASHSES
-                # txt_path = sample['txt_path'][i]
-                # print(txt_path)
-                # txt_name = 'prediction_{}'.format(os.path.basename(txt_path)).replace("\\", '/')
-                # txt_dir = os.path.dirname(txt_path)
-                # save_txt_path = os.path.join(dir_path, txt_dir, txt_name)
-                # np.savetxt(save_txt_path, transform.T.ravel(), fmt='%1.6f', newline=' ')
-
-                # if export_to_folder:
-                #     """
-                #     Copies .txt predictions, .cogs scans and bin .stl into standalone folder with Inference suffix
-                #     """
-                #     export_path = dir_path + 'Inference'
-                #     if not os.path.isdir(export_path):
-                #         os.mkdir(export_path)
-
-                #     if not os.path.isdir(os.path.join(export_path, txt_dir)):
-                #         os.mkdir(os.path.join(export_path, txt_dir))
-
-                #     export_txt_path = os.path.join(export_path, txt_dir, txt_name)
-                #     np.savetxt(export_txt_path, transform.T.ravel(), fmt='%1.6f', newline=' ')
-                #     scan_name = txt_name[11:-4] + '.cogs'
-                #     copyfile(os.path.join(dir_path, txt_dir, scan_name), os.path.join(export_path, txt_dir, scan_name))
-
-                #     if not os.path.exists(os.path.join(export_path, txt_dir, 'bin.stl')):
-                #         copyfile(os.path.join(dir_path, txt_dir, 'bin.stl'), os.path.join(export_path, txt_dir, 'bin.stl'))
 
 if __name__ == '__main__':
     """
