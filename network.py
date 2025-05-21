@@ -4,6 +4,9 @@ import os
 import torch
 import torchvision
 
+from blitz.modules import BayesianLinear
+from blitz.utils import variational_estimator
+
 
 def points_loss_function(y_pred, y, vec):
     """Unused loss function"""
@@ -36,9 +39,9 @@ def normalized_l2_loss(pred, gt, reduce=True):
     else:
         return loss
 
-
+@variational_estimator
 class Network(torch.nn.Module):
-    def __init__(self, backbone='resnet18'):
+    def __init__(self, backbone='resnet18', modifications=0):
         super(Network, self).__init__()
 
         if backbone == 'resnet18':
@@ -52,32 +55,83 @@ class Network(torch.nn.Module):
 
         self.backbone = torch.nn.Sequential(*list(pretrained_backbone_model.children())[:-3])
         # print(list(pretrained_backbone_model.children())[0])
-
         # self.init_conv = torch.nn.Conv2d(3, 64, (11, 11), (5, 5))
+        if modifications == 1:
+            self.fc_z = torch.nn.Sequential(
+                torch.nn.Linear(last_feat, 128),
+                torch.nn.LeakyReLU(),
+                torch.nn.Dropout(0.5),
+                torch.nn.Linear(128, 64),
+                torch.nn.LeakyReLU(),
+                torch.nn.Dropout(0.5),
+                torch.nn.Linear(64, 3)
+            )
 
-        self.fc_z = torch.nn.Sequential(torch.nn.Linear(last_feat, 128),
-                                        torch.nn.LeakyReLU(),
-                                        torch.nn.Dropout(0.5),  # JK treba mat zakomentovane ak idem bez dropoutovu povodnu neuronku
-                                        torch.nn.Linear(128, 64),
-                                        torch.nn.LeakyReLU(),
-                                        torch.nn.Dropout(0.5),  # JK
-                                        torch.nn.Linear(64, 3))
+            self.fc_y = torch.nn.Sequential(
+                torch.nn.Linear(last_feat, 128),
+                torch.nn.LeakyReLU(),
+                torch.nn.Dropout(0.5),
+                torch.nn.Linear(128, 64),
+                torch.nn.LeakyReLU(),
+                torch.nn.Dropout(0.5),
+                torch.nn.Linear(64, 3)
+                )
 
-        self.fc_y = torch.nn.Sequential(torch.nn.Linear(last_feat, 128),
-                                        torch.nn.LeakyReLU(),
-                                        torch.nn.Dropout(0.5),  # JK treba mat zakomentovane ak idem bez dropoutovu povodnu neuronku
-                                        torch.nn.Linear(128, 64),
-                                        torch.nn.LeakyReLU(),
-                                        torch.nn.Dropout(0.5),  # JK
-                                        torch.nn.Linear(64, 3))
+            self.fc_t = torch.nn.Sequential(
+                torch.nn.Linear(last_feat, 128),
+                torch.nn.LeakyReLU(),
+                torch.nn.Dropout(0.5),
+                torch.nn.Linear(128, 64),
+                torch.nn.LeakyReLU(),
+                torch.nn.Dropout(0.5),
+                torch.nn.Linear(64, 3)
+            )
+        elif modifications == 2:
+            self.fc_z = torch.nn.Sequential(
+                torch.nn.Linear(last_feat, 128),
+                torch.nn.LeakyReLU(),
+                torch.nn.Linear(128, 64),
+                torch.nn.LeakyReLU(),
+                BayesianLinear(64, 3)
+            )
+            self.fc_y = torch.nn.Sequential(
+                torch.nn.Linear(last_feat, 128),
+                torch.nn.LeakyReLU(),
+                torch.nn.Linear(128, 64),
+                torch.nn.LeakyReLU(),
+                BayesianLinear(64, 3)
+            )
+            self.fc_t = torch.nn.Sequential(
+                torch.nn.Linear(last_feat, 128),
+                torch.nn.LeakyReLU(),
+                torch.nn.Linear(128, 64),
+                torch.nn.LeakyReLU(),
+                BayesianLinear(64, 3)
+            )
+        else:
+            self.fc_z = torch.nn.Sequential(
+                torch.nn.Linear(last_feat, 128),
+                torch.nn.LeakyReLU(),
+                torch.nn.Linear(128, 64),
+                torch.nn.LeakyReLU(),
+                torch.nn.Linear(64, 3)
+            )
 
-        self.fc_t = torch.nn.Sequential(torch.nn.Linear(last_feat, 128),
-                                        torch.nn.LeakyReLU(),
-                                        torch.nn.Dropout(0.5),  # JK treba mat zakomentovane ak idem bez dropoutovu povodnu neuronku
-                                        torch.nn.Linear(128, 64),
-                                        torch.nn.LeakyReLU(),
-                                        torch.nn.Dropout(0.5),  # JK
-                                        torch.nn.Linear(64, 3))
+            self.fc_y = torch.nn.Sequential(
+                torch.nn.Linear(last_feat, 128),
+                torch.nn.LeakyReLU(),
+                torch.nn.Linear(128, 64),
+                torch.nn.LeakyReLU(),
+                torch.nn.Linear(64, 3)
+            )
+
+            self.fc_t = torch.nn.Sequential(
+                torch.nn.Linear(last_feat, 128),
+                torch.nn.LeakyReLU(),
+                torch.nn.Linear(128, 64),
+                torch.nn.LeakyReLU(),
+                torch.nn.Linear(64, 3)
+            )
 
     def forward(self, x):
         # x = self.init_conv(x)
@@ -109,7 +163,7 @@ def parse_command_line():
     parser.add_argument('-iw', '--input_width', type=int, default=256, help='size of input')
     parser.add_argument('-ih', '--input_height', type=int, default=256, help='size of input')
     parser.add_argument('-e', '--epochs', type=int, default=250, help='max number of epochs')
-    parser.add_argument('-g', '--gpu', type=str, default='0', help='which gpu to use')
+    parser.add_argument('-g', '--gpu', type=str, default='1', help='which gpu to use')
     parser.add_argument('-bb', '--backbone', type=str, default='resnet18', help='which backbone to use: resnet18/34/50')
     parser.add_argument('-de', '--dump_every', type=int, default=0, help='save every n frames during extraction scripts')
     parser.add_argument('-w', '--weight', type=float, default=1.0, help='weight for translation component')
@@ -118,6 +172,7 @@ def parse_command_line():
     parser.add_argument('-rr', '--random_rot', action='store_true', default=False)
     parser.add_argument('-wp', '--weights_path', type=str, default=None, help='Path to the model weights file') # add JK
     parser.add_argument('-vis', '--visualize', action='store_true', default=False, help='Visualize the model predictions into a file') # add JK
+    parser.add_argument('-mod', '--modifications', type=int, default=0, help='Modifications to the model: mc_dropout=1, bayesian=2') # add JK
     parser.add_argument('path')
     args = parser.parse_args()
 
@@ -126,22 +181,22 @@ def parse_command_line():
     return args
 
 
-# def load_model(args):
-#     """
-#     Loads model. If args.resum is None weights for the backbone are pre-trained on ImageNet, otherwise previous
-#     checkpoint is loaded
-#     """
-#     model = Network(backbone=args.backbone).cuda()
-#     if args.resume is not None:
-#         sd_path = 'checkpoints/{:03d}.pth'.format(args.resume)
-#         print("Resuming from: ", sd_path)
-#         model.load_state_dict(torch.load(sd_path))
-#     return model
-
 def load_model(args):
-    model = Network(backbone=args.backbone).cuda()
-    if args.weights_path is not None:
-        print("Loading weights from:", args.weights_path)
-        state_dict = torch.load(args.weights_path)
-        model.load_state_dict(state_dict, strict=False)  # strict=False to allow missing weights like dropout
+    """
+    Loads model. If args.resum is None weights for the backbone are pre-trained on ImageNet, otherwise previous
+    checkpoint is loaded
+    """
+    model = Network(backbone=args.backbone, modifications=args.modifications).cuda()
+    if args.resume is not None:
+        sd_path = 'checkpoints/{:03d}.pth'.format(args.resume)
+        print("Resuming from: ", sd_path)
+        model.load_state_dict(torch.load(sd_path))
     return model
+
+# def load_model(args, modifications=None):
+#     model = Network(backbone=args.backbone, modifications=modifications).cuda()
+#     if args.weights_path is not None:
+#         print("Loading weights from:", args.weights_path)
+#         state_dict = torch.load(args.weights_path)
+#         model.load_state_dict(state_dict, strict=False)  # strict=False to allow missing weights like dropout
+#     return model

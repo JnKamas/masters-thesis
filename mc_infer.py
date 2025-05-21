@@ -49,7 +49,7 @@ def estimate_rotation_entropy(rotation_matrices, bins=30):
     p = p[p > 0]
     return -np.sum(p * np.log(p))
 
-def mc_infer(args, export_to_folder=False, mc_samples=100):
+def mc_infer(args, export_to_folder=True, mc_samples=100):
     model = load_model(args)
     enable_dropout(model)
 

@@ -12,7 +12,7 @@ from shutil import copyfile
 import matplotlib.pyplot as plt
 
 
-def infer(args, export_to_folder=False):
+def infer(args, export_to_folder=True):
     model = load_model(args).eval()
 
     dir_path = os.path.dirname(args.path)
@@ -57,41 +57,74 @@ def infer(args, export_to_folder=False):
                 print("Det: ", np.linalg.det(transform))
                 print(transform)
 
-                # Compute simple MSE loss between predicted and GT transform
-                loss = np.mean((gt_transform - transform) ** 2)
-                print(f"Loss: {loss:.6f}")
-                total_loss += loss
-                count += 1
+                txt_path = sample['txt_path'][i].replace("\\", "/")
+                print(txt_path)
 
-                txt_path = sample['txt_path'][i]
-                txt_name = 'prediction_{}'.format(os.path.basename(txt_path)).replace("\\", '/')
+                txt_name = f'prediction_{os.path.basename(txt_path)}'
                 txt_dir = os.path.dirname(txt_path)
+
+                # Save prediction to original dataset folder
                 save_txt_path = os.path.join(dir_path, txt_dir, txt_name)
+                os.makedirs(os.path.dirname(save_txt_path), exist_ok=True)
                 np.savetxt(save_txt_path, transform.T.ravel(), fmt='%1.6f', newline=' ')
 
                 if export_to_folder:
                     """
-                    Copies .txt predictions, .cogs scans and bin .stl into standalone folder with Inference suffix
+                    Copies original scan and adds prediction into 'datasetInference/' while preserving folder structure.
                     """
-                    export_path = dir_path + 'Inference'
-                    if not os.path.isdir(export_path):
-                        os.mkdir(export_path)
+                    export_root = dir_path + 'Inference'  # e.g., datasetInference
+                    export_subdir = os.path.join(export_root, txt_dir)  # e.g., datasetInference/dataset0
+                    os.makedirs(export_subdir, exist_ok=True)
 
-                    if not os.path.isdir(os.path.join(export_path, txt_dir)):
-                        os.mkdir(os.path.join(export_path, txt_dir))
+                    # 1. Copy scan_000.txt from original dataset
+                    original_scan_path = os.path.join(dir_path, txt_path)
+                    export_scan_path = os.path.join(export_subdir, os.path.basename(txt_path))
+                    if os.path.exists(original_scan_path) and not os.path.exists(export_scan_path):
+                        copyfile(original_scan_path, export_scan_path)
 
-                    export_txt_path = os.path.join(export_path, txt_dir, txt_name)
-                    np.savetxt(export_txt_path, transform.T.ravel(), fmt='%1.6f', newline=' ')
+                    # 2. Save predicted transform
+                    export_pred_path = os.path.join(export_subdir, txt_name)
+                    np.savetxt(export_pred_path, transform.T.ravel(), fmt='%1.6f', newline=' ')
+
+                    # 3. Copy scan's .cogs file if it exists
                     scan_name = txt_name[11:-4] + '.cogs'
-                    copyfile(os.path.join(dir_path, txt_dir, scan_name), os.path.join(export_path, txt_dir, scan_name))
+                    scan_cogs_src = os.path.join(dir_path, txt_dir, scan_name)
+                    scan_cogs_dst = os.path.join(export_subdir, scan_name)
+                    if os.path.exists(scan_cogs_src) and not os.path.exists(scan_cogs_dst):
+                        copyfile(scan_cogs_src, scan_cogs_dst)
 
-                    if not os.path.exists(os.path.join(export_path, txt_dir, 'bin.stl')):
-                        copyfile(os.path.join(dir_path, txt_dir, 'bin.stl'), os.path.join(export_path, txt_dir, 'bin.stl'))
+                    # 4. Copy bin.stl if it exists
+                    bin_src = os.path.join(dir_path, txt_dir, 'bin.stl')
+                    bin_dst = os.path.join(export_subdir, 'bin.stl')
+                    if os.path.exists(bin_src) and not os.path.exists(bin_dst):
+                        copyfile(bin_src, bin_dst)
 
-        # Print final average loss after inference
-        if count > 0:
-            avg_loss = total_loss / count
-            print(f"Average Loss: {avg_loss:.6f}")
+                # THIS IS OLD, FROM THE ORIGINAL EVALUATE. FDONT FORGET TO FIX THE SLASHSES
+                # txt_path = sample['txt_path'][i]
+                # print(txt_path)
+                # txt_name = 'prediction_{}'.format(os.path.basename(txt_path)).replace("\\", '/')
+                # txt_dir = os.path.dirname(txt_path)
+                # save_txt_path = os.path.join(dir_path, txt_dir, txt_name)
+                # np.savetxt(save_txt_path, transform.T.ravel(), fmt='%1.6f', newline=' ')
+
+                # if export_to_folder:
+                #     """
+                #     Copies .txt predictions, .cogs scans and bin .stl into standalone folder with Inference suffix
+                #     """
+                #     export_path = dir_path + 'Inference'
+                #     if not os.path.isdir(export_path):
+                #         os.mkdir(export_path)
+
+                #     if not os.path.isdir(os.path.join(export_path, txt_dir)):
+                #         os.mkdir(os.path.join(export_path, txt_dir))
+
+                #     export_txt_path = os.path.join(export_path, txt_dir, txt_name)
+                #     np.savetxt(export_txt_path, transform.T.ravel(), fmt='%1.6f', newline=' ')
+                #     scan_name = txt_name[11:-4] + '.cogs'
+                #     copyfile(os.path.join(dir_path, txt_dir, scan_name), os.path.join(export_path, txt_dir, scan_name))
+
+                #     if not os.path.exists(os.path.join(export_path, txt_dir, 'bin.stl')):
+                #         copyfile(os.path.join(dir_path, txt_dir, 'bin.stl'), os.path.join(export_path, txt_dir, 'bin.stl'))
 
 if __name__ == '__main__':
     """
