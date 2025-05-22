@@ -105,7 +105,7 @@ def infer(args, export_to_folder=True):
                     export_pred_path = os.path.join(export_subdir, txt_name)
                     np.savetxt(export_pred_path, transform.T.ravel(), fmt='%1.6f', newline=' ')
 
-                    # WE DO NOT COPY COGS...
+                    # WE DO NOT COPY COGS... WASTE OF SPACE
 
                     # # 3. Copy scan's .cogs file if it exists
                     # scan_name = txt_name[11:-4] + '.cogs'
