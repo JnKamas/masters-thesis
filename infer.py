@@ -105,21 +105,6 @@ def infer(args, export_to_folder=True):
                     export_pred_path = os.path.join(export_subdir, txt_name)
                     np.savetxt(export_pred_path, transform.T.ravel(), fmt='%1.6f', newline=' ')
 
-                    # WE DO NOT COPY COGS... WASTE OF SPACE
-
-                    # # 3. Copy scan's .cogs file if it exists
-                    # scan_name = txt_name[11:-4] + '.cogs'
-                    # scan_cogs_src = os.path.join(dir_path, txt_dir, scan_name)
-                    # scan_cogs_dst = os.path.join(export_subdir, scan_name)
-                    # if os.path.exists(scan_cogs_src) and not os.path.exists(scan_cogs_dst):
-                    #     copyfile(scan_cogs_src, scan_cogs_dst)
-
-                    # # 4. Copy bin.stl if it exists
-                    # bin_src = os.path.join(dir_path, txt_dir, 'bin.stl')
-                    # bin_dst = os.path.join(export_subdir, 'bin.stl')
-                    # if os.path.exists(bin_src) and not os.path.exists(bin_dst):
-                    #     copyfile(bin_src, bin_dst)
-
 
 if __name__ == '__main__':
     """
