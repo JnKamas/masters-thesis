@@ -31,17 +31,41 @@ def infer(args, export_to_folder=True):
             enable_dropout(model)
 
         for sample in val_loader:
-            if args.modifications == "mc_dropout":
-                mc_pred_zs, mc_pred_ys, mc_pred_ts = [], [], []
-                for _ in range(args.mc_samples):
+            if args.modifications in {"mc_dropout", "bayesian"}:
+                for mc_idx in range(args.mc_samples):
                     z, y, t = model(sample['xyz'].cuda())
-                    mc_pred_zs.append(z.cpu().numpy())
-                    mc_pred_ys.append(y.cpu().numpy())
-                    mc_pred_ts.append(t.cpu().numpy())
+                    pred_zs = z.cpu().numpy()
+                    pred_ys = y.cpu().numpy()
+                    pred_ts = t.cpu().numpy()
+                    # Now, save each MC prediction separately
+                    for i in range(len(pred_zs)):
+                        # ... create your transform matrix as before ...
+                        z_i = pred_zs[i]
+                        z_i /= np.linalg.norm(z_i)
+                        y_i = pred_ys[i]
+                        y_i = y_i - np.dot(z_i, y_i) * z_i
+                        y_i /= np.linalg.norm(y_i)
+                        x_i = np.cross(y_i, z_i)
+                        transform = np.zeros([4, 4])
+                        transform[:3, 0] = x_i
+                        transform[:3, 1] = y_i
+                        transform[:3, 2] = z_i
+                        transform[:3, 3] = pred_ts[i]
+                        transform[3, 3] = 1
 
-                pred_zs = np.mean(np.stack(mc_pred_zs), axis=0)
-                pred_ys = np.mean(np.stack(mc_pred_ys), axis=0)
-                pred_ts = np.mean(np.stack(mc_pred_ts), axis=0)
+                        txt_path = sample['txt_path'][i].replace("\\", "/")
+                        txt_name = f'prediction{mc_idx}_{os.path.basename(txt_path).replace(".txt", "")}.txt'
+                        txt_dir = os.path.dirname(txt_path)
+
+                        save_txt_path = os.path.join(dir_path, txt_dir, txt_name)
+                        os.makedirs(os.path.dirname(save_txt_path), exist_ok=True)
+
+                        if export_to_folder:
+                            export_root = dir_path + 'Inference'
+                            export_subdir = os.path.join(export_root, txt_dir)
+                            os.makedirs(export_subdir, exist_ok=True)
+                            export_pred_path = os.path.join(export_subdir, txt_name)
+                            np.savetxt(export_pred_path, transform.T.ravel(), fmt='%1.6f', newline=' ')
             else:
                 pred_zs, pred_ys, pred_ts = model(sample['xyz'].cuda())
                 pred_zs = pred_zs.cpu().numpy()
