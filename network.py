@@ -194,8 +194,8 @@ def parse_command_line():
 #         model.load_state_dict(torch.load(sd_path))
 #     return model
 
-def load_model(args, modifications=None):
-    model = Network(backbone=args.backbone, modifications=modifications).cuda()
+def load_model(args):
+    model = Network(backbone=args.backbone, modifications=args.modifications).cuda()
     if args.weights_path is not None:
         print("Loading weights from:", args.weights_path)
         state_dict = torch.load(args.weights_path)
