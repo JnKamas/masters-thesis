@@ -48,10 +48,11 @@ def train(args):
 
     optimizer = torch.optim.Adam(model.parameters(), lr=args.learning_rate)
 
-    loss_running = torch.from_numpy(np.array([0], dtype=np.float32)).cuda()
-    loss_t_running = torch.from_numpy(np.array([0], dtype=np.float32)).cuda()
-    loss_z_running = torch.from_numpy(np.array([0], dtype=np.float32)).cuda()
-    loss_y_running = torch.from_numpy(np.array([0], dtype=np.float32)).cuda()
+    loss_running = 0.0
+    loss_t_running = 0.0
+    loss_z_running = 0.0
+    loss_y_running = 0.0
+
 
     l1_loss = torch.nn.L1Loss()
     is_bayesian = (args.modifications == "bayesian")
@@ -88,11 +89,12 @@ def train(args):
                 loss_t = args.weight * l1_loss(pred_t, sample['bin_translation'].cuda())
                 loss = loss_z + loss_y + loss_t
 
-            # # Note running loss calc makes loss increase in the beginning of training!
-            # loss_z_running = 0.9 * loss_z_running + 0.1 * loss_z
-            # loss_y_running = 0.9 * loss_y_running + 0.1 * loss_y
-            # loss_t_running = 0.9 * loss_t_running + 0.1 * loss_t
-            # loss_running = 0.9 * loss_running + 0.1 * loss
+            # Note running loss calc makes loss increase in the beginning of training! YES THIS WILL CRASH WHEN TRAINING BAYESIAN
+            loss_z_running = 0.9 * loss_z_running + 0.1 * loss_z.item()
+            loss_y_running = 0.9 * loss_y_running + 0.1 * loss_y.item()
+            loss_t_running = 0.9 * loss_t_running + 0.1 * loss_t.item()
+            loss_running = 0.9 * loss_running + 0.1 * loss.item()
+
 
             # print("Running loss: {}, z loss: {}, y loss: {}, t loss: {}"
             #       .format(loss_running.item(),  loss_z_running.item(), loss_y_running.item(), loss_t_running.item()))
@@ -138,6 +140,8 @@ def train(args):
                   .format(np.mean(val_losses), np.mean(val_losses_z), np.mean(val_losses_y), np.mean(val_losses_t)))
             print("medians - \t val loss: {} \t z loss: {} \t y loss: {} \t t loss: {}"
                   .format(np.median(val_losses), np.median(val_losses_z), np.median(val_losses_y), np.median(val_losses_t)))
+            import psutil, os
+            print(f"Epoch {e} RAM: {psutil.Process(os.getpid()).memory_info().rss // (1024*1024)} MB")
 
             val_loss_all.append(np.mean(val_losses))
 
@@ -147,9 +151,14 @@ def train(args):
                 os.mkdir('checkpoints/')
             torch.save(model.state_dict(), 'checkpoints/{:03d}.pth'.format(e))
 
-    # np.set_printoptions(suppress=True)
-    # np.savetxt('train_err.out', train_loss_all, delimiter=',')
-    # np.savetxt('val_err.out', val_loss_all, delimiter=',')
+        with open("loss_log.txt", "a") as f:
+            f.write(f"{e+1}\t{loss_running:.6f}\t{np.mean(val_losses):.6f}\n")
+
+    # toto mi neslo... ale mozno to pojde ked pridam .item() ku train_loss_all akoze kde sa to pridava
+    np.set_printoptions(suppress=True) 
+    np.savetxt('train_err.out', train_loss_all, delimiter=',')
+    np.savetxt('val_err.out', val_loss_all, delimiter=',')
+
 
 if __name__ == '__main__':
     """
