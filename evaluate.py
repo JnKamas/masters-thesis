@@ -49,9 +49,27 @@ def write_refined_file(path, number, R44):
               f'{R44[0][2]} {R44[1][2]} {R44[2][2]} 0.0 '
               f'{R44[0][3]} {R44[1][3]} {R44[2][3]} 1.0', file=rf)
 
+def average_mc_predictions(path, number, mc_samples):
+    Rs, ts = [], []
+    for i in range(mc_samples):
+        fname = f'prediction{i}_scan_{number}.txt'
+        fpath = os.path.join(path, fname)
+        if not os.path.isfile(fpath):
+            # If some files are missing, skip this sample
+            return None, None
+        R, t = read_transform_file(fpath)
+        Rs.append(R)
+        ts.append(t)
+    # Compute mean of translations
+    mean_t = np.mean(ts, axis=0)
+    # Compute mean of rotations (elementwise)
+    mean_R = np.mean(Rs, axis=0)
+    # Optional: Project mean_R back to SO(3) (not necessary for basic error metrics, but could use SVD here)
+    return mean_R, mean_t
 
-def evaluate(args_path):
-    gt_files = glob.iglob(args_path + '/**/*.txt', recursive=True)
+
+def evaluate(args):
+    gt_files = glob.iglob(args.path + '/**/*.txt', recursive=True)
     good_gt_files = [f for f in gt_files if not any(sub in f for sub in ['bad', 'catas', 'ish', 'pred', 'icp', 'refined']) and any(sub in f for sub in ['scan_', 'gt_'])]
     eTE_list = []
     eTE_list_icp = []
@@ -75,7 +93,14 @@ def evaluate(args_path):
                 print("Prediction file not found for " + file)
                 continue
 
-        pr_R, pr_t = read_transform_file(path + '/' + pr_file)
+        if args.modifications == "mc_dropout":
+            pr_R, pr_t = average_mc_predictions(path, number, args.mc_samples)
+            if pr_R is None:
+                print(f"Some MC samples missing for {number}, skipping.")
+                continue
+        else:
+            pr_R, pr_t = read_transform_file(path + '/' + pr_file)
+
 
         gt_R1, gt_t = read_transform_file(path + '/' + gt_file)
         if np.linalg.det(gt_R1) < 0:
@@ -148,4 +173,7 @@ if __name__ == '__main__':
     """
     parser = argparse.ArgumentParser()
     parser.add_argument('path', help='Path to dataset root folder.')
-    evaluate(parser.parse_args().path)
+    parser.add_argument('--modifications', type=str, default='none', help='Modifications to the model (e.g., mc_dropout)')
+    parser.add_argument('--mc_samples', type=int, default=10, help='Number of MC samples to average over.')
+    args = parser.parse_args()
+    evaluate(args)
