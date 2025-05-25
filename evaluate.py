@@ -244,21 +244,21 @@ def evaluate(args):
         eaad_list.append(eaad_val)
 
     # ----------- Classic metrics summary -----------
-    print(len(eTE_list))
-    print(counter_better)
-    print(counter_worse)
+    print("Evaluated samples: " + str(len(eTE_list)))
+    # print("Better" + str(counter_better))
+    # print("Worse" + str(counter_worse))
     print(f'MEAN eTE {mean(eTE_list)}, eRE: {mean(eRE_list)}, eGD: {mean(eGD_list)}')
     print(f'STD eTE {np.std(eTE_list)}, eRE: {np.std(eRE_list)}, eGD: {np.std(eGD_list)}')
     print(f'MEDIAN eTE {median(eTE_list)}, eRE: {median(eRE_list)}, eGD: {median(eGD_list)}')
-    print(f'MIN eTE {min(eTE_list)}, eRE: {min(eRE_list)}, eGD: {min(eGD_list)}')
-    print(f'MAX eTE {max(eTE_list)}, eRE: {max(eRE_list)}, eGD: {max(eGD_list)}')
+    # print(f'MIN eTE {min(eTE_list)}, eRE: {min(eRE_list)}, eGD: {min(eGD_list)}')
+    # print(f'MAX eTE {max(eTE_list)}, eRE: {max(eRE_list)}, eGD: {max(eGD_list)}')
 
-    print('AFTER ICP')
-    print(f'MEAN eTE {mean(eTE_list_icp)}, eRE: {mean(eRE_list_icp)}, eGD: {mean(eGD_list_icp)}')
-    print(f'STD eTE {np.std(eTE_list_icp)}, eRE: {np.std(eRE_list_icp)}, eGD: {np.std(eGD_list_icp)}')
-    print(f'MEDIAN eTE {median(eTE_list_icp)}, eRE: {median(eRE_list_icp)}, eGD: {median(eGD_list_icp)}')
-    print(f'MIN eTE {min(eTE_list_icp)}, eRE: {min(eRE_list_icp)}, eGD: {min(eGD_list_icp)}')
-    print(f'MAX eTE {max(eTE_list_icp)}, eRE: {max(eRE_list_icp)}, eGD: {max(eGD_list_icp)}')
+    # print('AFTER ICP')
+    # print(f'MEAN eTE {mean(eTE_list_icp)}, eRE: {mean(eRE_list_icp)}, eGD: {mean(eGD_list_icp)}')
+    # print(f'STD eTE {np.std(eTE_list_icp)}, eRE: {np.std(eRE_list_icp)}, eGD: {np.std(eGD_list_icp)}')
+    # print(f'MEDIAN eTE {median(eTE_list_icp)}, eRE: {median(eRE_list_icp)}, eGD: {median(eGD_list_icp)}')
+    # print(f'MIN eTE {min(eTE_list_icp)}, eRE: {min(eRE_list_icp)}, eGD: {min(eGD_list_icp)}')
+    # print(f'MAX eTE {max(eTE_list_icp)}, eRE: {max(eRE_list_icp)}, eGD: {max(eGD_list_icp)}')
 
     # ----------- Uncertainty summary -----------
     all_preds_t_stack = np.concatenate(all_preds_t, axis=0)
