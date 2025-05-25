@@ -181,23 +181,18 @@ def parse_command_line():
         os.environ["CUDA_VISIBLE_DEVICES"] = args.gpu
     return args
 
-
-# def load_model(args):
-#     """
-#     Loads model. If args.resum is None weights for the backbone are pre-trained on ImageNet, otherwise previous
-#     checkpoint is loaded
-#     """
-#     model = Network(backbone=args.backbone, modifications=args.modifications).cuda()
-#     if args.resume is not None:
-#         sd_path = 'checkpoints/{:03d}.pth'.format(args.resume)
-#         print("Resuming from: ", sd_path)
-#         model.load_state_dict(torch.load(sd_path))
-#     return model
-
 def load_model(args):
+    """
+    Loads model. If args.resum is None weights for the backbone are pre-trained on ImageNet, otherwise previous
+    checkpoint is loaded
+    """
     model = Network(backbone=args.backbone, modifications=args.modifications).cuda()
     if args.weights_path is not None:
         print("Loading weights from:", args.weights_path)
         state_dict = torch.load(args.weights_path)
         model.load_state_dict(state_dict, strict=False)  # strict=False to allow missing weights like dropout
+    if args.resume is not None:
+        sd_path = 'checkpoints/{:03d}.pth'.format(args.resume)
+        print("Resuming from: ", sd_path)
+        model.load_state_dict(torch.load(sd_path))
     return model
