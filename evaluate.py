@@ -3,7 +3,7 @@ import glob
 import os
 import numpy as np
 from statistics import mean, median
-from scipy.linalg import logm
+from scipy.linalg import logm, svd
 from scipy.spatial.transform import Rotation as sciR
 import warnings
 
@@ -60,19 +60,28 @@ def get_mc_predictions(path, number, mc_samples):
     return np.stack(Rs), np.stack(ts)
 
 def mean_rotation_SVD(Rs):
-    """
-    Rs: numpy array of shape (N, 3, 3) - MC sample rotation matrices
-    Returns: a valid rotation matrix (3, 3)
-    """
     M = np.mean(Rs, axis=0)
     U, _, Vt = np.linalg.svd(M)
     R_mean = np.dot(U, Vt)
-    # Ensure right-handed coordinate system (determinant=1)
     if np.linalg.det(R_mean) < 0:
         U[:, -1] *= -1
         R_mean = np.dot(U, Vt)
     return R_mean
 
+# ---- SO(3) Metrics Helper Functions ----
+
+def geodesic_distance(Ra, Rb):
+    return np.arccos(np.clip((np.trace(Ra.T @ Rb) - 1) / 2, -1.0, 1.0))
+
+def credible_region_radius(Rs, R_bar, alpha=0.95):
+    distances = np.array([geodesic_distance(R, R_bar) for R in Rs])
+    r_alpha = np.percentile(distances, alpha * 100)
+    prop_in_region = np.mean(distances <= r_alpha)
+    return r_alpha, prop_in_region
+
+def eaad(Rs, R_bar):
+    deviations = np.array([geodesic_distance(R_bar, R) for R in Rs])
+    return deviations.mean()
 
 def evaluate(args):
     gt_files = glob.iglob(args.path + '/**/*.txt', recursive=True)
@@ -88,9 +97,9 @@ def evaluate(args):
     counter_better = 0
     counter_worse = 0
 
-    all_preds_t = []    # List of [mc_samples, 3] or [1, 3] arrays
-    all_preds_R = []    # List of [mc_samples, 3, 3] or [1, 3, 3] arrays
-    all_gts_t = []      # List of [3] arrays
+    all_preds_t = []
+    all_preds_R = []
+    all_gts_t = []
 
     coverage_t = np.zeros(3)
     coverage_pred_t = np.zeros(3)
@@ -101,6 +110,11 @@ def evaluate(args):
     entropy_list = []
     orth_dev_list = []
     det_dev_list = []
+
+    # ---- New Metrics Lists ----
+    credible_region_radii = []
+    credible_region_coverages = []
+    eaad_list = []
 
     for file in good_gt_files:
         path, gt_file = os.path.split(file)
@@ -115,7 +129,7 @@ def evaluate(args):
                 print("Prediction file not found for " + file)
                 continue
 
-        if args.modifications == "mc_dropout," or args.modifications == "bayesian":
+        if args.modifications == "mc_dropout" or args.modifications == "bayesian":
             Rs, ts = get_mc_predictions(path, number, args.mc_samples)
             if Rs is None:
                 print(f"Some MC samples missing for {number}, skipping.")
@@ -178,13 +192,10 @@ def evaluate(args):
         eTE_list_icp.append(calculate_eTE(gt_t, pr_tICP))
         eGD_list_icp.append(min(calculate_eGD(gt_R1, pr_RICP), calculate_eGD(gt_R2, pr_RICP)))
 
-        # ---- Store ALL predictions for uncertainty ----
-        all_preds_t.append(pts_arr)   # [N, 3]
-        all_preds_R.append(rots)      # [N, 3, 3]
-        all_gts_t.append(gt_t)        # [3]
+        all_preds_t.append(pts_arr)
+        all_preds_R.append(rots)
+        all_gts_t.append(gt_t)
 
-        # ---- Per-sample uncertainty metrics ----
-        # Coverage (95% interval)
         for j in range(3):
             lo = np.percentile(pts_arr[:, j], 2.5)
             hi = np.percentile(pts_arr[:, j], 97.5)
@@ -193,7 +204,7 @@ def evaluate(args):
             if lo <= mean_t[j] <= hi:
                 coverage_pred_t[j] += 1
 
-        # Rotation uncertainty (spread, entropy, etc.):
+        # Rotation uncertainty metrics (classic)
         angs = [ (sciR.from_matrix(r).inv() * sciR.from_matrix(gt_R1)).magnitude() for r in rots ]
         rotation_errors.append(np.mean(angs))
         rotation_std_errors.append(np.std(angs))
@@ -223,6 +234,19 @@ def evaluate(args):
         orth_dev_list.append(orth_dev)
         det_dev_list.append(det_dev)
 
+        # ---- NEW METRICS ----
+        # Compute mean rotation
+        R_bar_so3 = mean_rotation_SVD(rots)
+
+        # 1. Credible region radius (SO(3) ball, 95%)
+        r_alpha, prop_in_region = credible_region_radius(rots, R_bar_so3, alpha=0.95)
+        credible_region_radii.append(r_alpha)
+        credible_region_coverages.append(prop_in_region)
+
+        # 2. EAAD
+        eaad_val = eaad(rots, R_bar_so3)
+        eaad_list.append(eaad_val)
+
     # ----------- Classic metrics summary -----------
     print(len(eTE_list))
     print(counter_better)
@@ -241,12 +265,9 @@ def evaluate(args):
     print(f'MAX eTE {max(eTE_list_icp)}, eRE: {max(eRE_list_icp)}, eGD: {max(eGD_list_icp)}')
 
     # ----------- Uncertainty summary -----------
-    # Now flatten all MC predictions for global stats if needed
-    # Each all_preds_t[i] is [N, 3]
-    all_preds_t_stack = np.concatenate(all_preds_t, axis=0)  # [num_samples * N, 3]
-    all_gts_t_stack = np.stack(all_gts_t)                   # [num_samples, 3]
+    all_preds_t_stack = np.concatenate(all_preds_t, axis=0)
+    all_gts_t_stack = np.stack(all_gts_t)
     n_samples = len(all_gts_t)
-    # Mean/std of mean predictions per sample:
     mean_preds_per_sample = np.stack([np.mean(p, axis=0) for p in all_preds_t])
     std_preds_per_sample = np.stack([np.std(p, axis=0) for p in all_preds_t])
 
@@ -276,14 +297,14 @@ def evaluate(args):
     print(f" Mean Δ_orth: {np.mean(orth_dev_list):.6f}")
     print(f" Mean Δ_det:   {np.mean(det_dev_list):.6f}")
 
+    # ---- Print new SO(3) metrics ----
+    print("\n=== SO(3) Rotational Uncertainty Metrics ===")
+    print(f"Mean 95% Credible Region Radius: {np.mean(credible_region_radii):.4f} rad / {np.degrees(np.mean(credible_region_radii)):.2f}°")
+    print(f"Mean Empirical Coverage (should be ~0.95): {np.mean(credible_region_coverages):.3f}")
+    print(f"Mean EAAD: {np.mean(eaad_list):.4f} rad / {np.degrees(np.mean(eaad_list)):.2f}°")
     print("\n=== END ===")
 
 if __name__ == '__main__':
-    """
-    Example usage:
-      python evaluate.py path/to/dataset_with_predictions
-      python evaluate.py path/to/dataset_with_predictions --modifications mc_dropout --mc_samples 10
-    """
     parser = argparse.ArgumentParser()
     parser.add_argument('path', help='Path to dataset root folder.')
     parser.add_argument('--modifications', type=str, default='none', help='Modifications to the model (e.g., mc_dropout)')
