@@ -107,7 +107,6 @@ def evaluate(args):
     rotation_errors = []
     rotation_std_errors = []
     spread_list = []
-    entropy_list = []
     orth_dev_list = []
     det_dev_list = []
 
@@ -222,11 +221,8 @@ def evaluate(args):
             counts, _ = np.histogram(pairwise_angles, bins=30)
             p = counts.astype(float) / counts.sum()
             p = p[p > 0]
-            entropy = -np.sum(p * np.log(p))
-            entropy_list.append(entropy)
         else:
             spread_list.append(0.0)
-            entropy_list.append(0.0)
 
         R_bar = np.mean(rots, axis=0)
         orth_dev = np.linalg.norm(R_bar.T @ R_bar - np.eye(3), ord='fro')
@@ -293,7 +289,6 @@ def evaluate(args):
 
     print("Rotation Uncertainty Metrics:")
     print(f" Mean Sample Spread:          {np.mean(spread_list):.4f} rad / {np.degrees(np.mean(spread_list)):.2f}°")
-    print(f" Mean Entropy-like Measure:   {np.mean(entropy_list):.4f}")
     print(f" Mean Δ_orth: {np.mean(orth_dev_list):.6f}")
     print(f" Mean Δ_det:   {np.mean(det_dev_list):.6f}")
 
