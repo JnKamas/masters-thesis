@@ -59,6 +59,21 @@ def get_mc_predictions(path, number, mc_samples):
         ts.append(t)
     return np.stack(Rs), np.stack(ts)
 
+def mean_rotation_SVD(Rs):
+    """
+    Rs: numpy array of shape (N, 3, 3) - MC sample rotation matrices
+    Returns: a valid rotation matrix (3, 3)
+    """
+    M = np.mean(Rs, axis=0)
+    U, _, Vt = np.linalg.svd(M)
+    R_mean = np.dot(U, Vt)
+    # Ensure right-handed coordinate system (determinant=1)
+    if np.linalg.det(R_mean) < 0:
+        U[:, -1] *= -1
+        R_mean = np.dot(U, Vt)
+    return R_mean
+
+
 def evaluate(args):
     gt_files = glob.iglob(args.path + '/**/*.txt', recursive=True)
     good_gt_files = [f for f in gt_files if not any(sub in f for sub in ['bad', 'catas', 'ish', 'pred', 'icp', 'refined']) and any(sub in f for sub in ['scan_', 'gt_'])]
@@ -100,7 +115,7 @@ def evaluate(args):
                 print("Prediction file not found for " + file)
                 continue
 
-        if args.modifications == "mc_dropout":
+        if args.modifications == "mc_dropout," or args.modifications == "bayesian":
             Rs, ts = get_mc_predictions(path, number, args.mc_samples)
             if Rs is None:
                 print(f"Some MC samples missing for {number}, skipping.")
@@ -108,7 +123,7 @@ def evaluate(args):
             mean_t = np.mean(ts, axis=0)
             std_t = np.std(ts, axis=0)
             pr_t = mean_t
-            pr_R = np.mean(Rs, axis=0)  # used only for old metrics!
+            pr_R = mean_rotation_SVD(Rs)
             pts_arr = ts
             rots = Rs
         else:

@@ -70,8 +70,8 @@ def train(args):
             optimizer.zero_grad()
             if is_bayesian:
                     loss = model.sample_elbo(
-                        x=sample['xyz'].cuda(),
-                        target=( # if your criterion expects tuple
+                        sample['xyz'].cuda(),
+                        (
                             sample['bin_transform'][:, :3, 2].cuda(),
                             sample['bin_transform'][:, :3, 1].cuda(),
                             sample['bin_translation'].cuda(),
@@ -90,14 +90,15 @@ def train(args):
                 loss = loss_z + loss_y + loss_t
 
             # Note running loss calc makes loss increase in the beginning of training! YES THIS WILL CRASH WHEN TRAINING BAYESIAN
-            loss_z_running = 0.9 * loss_z_running + 0.1 * loss_z.item()
-            loss_y_running = 0.9 * loss_y_running + 0.1 * loss_y.item()
-            loss_t_running = 0.9 * loss_t_running + 0.1 * loss_t.item()
+            if not is_bayesian:
+                loss_z_running = 0.9 * loss_z_running + 0.1 * loss_z.item()
+                loss_y_running = 0.9 * loss_y_running + 0.1 * loss_y.item()
+                loss_t_running = 0.9 * loss_t_running + 0.1 * loss_t.item()
             loss_running = 0.9 * loss_running + 0.1 * loss.item()
 
 
-            # print("Running loss: {}, z loss: {}, y loss: {}, t loss: {}"
-            #       .format(loss_running.item(),  loss_z_running.item(), loss_y_running.item(), loss_t_running.item()))
+            print("Running loss: {}, z loss: {}, y loss: {}, t loss: {}"
+                  .format(loss_running,  loss_z_running, loss_y_running, loss_t_running))
 
             optimizer.zero_grad()
             loss.backward()

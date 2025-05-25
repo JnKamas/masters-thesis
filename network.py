@@ -88,23 +88,23 @@ class Network(torch.nn.Module):
             )
         elif modifications == "bayesian":
             self.fc_z = torch.nn.Sequential(
-                torch.nn.Linear(last_feat, 128),
+                BayesianLinear(last_feat, 128),
                 torch.nn.LeakyReLU(),
-                torch.nn.Linear(128, 64),
+                BayesianLinear(128, 64),
                 torch.nn.LeakyReLU(),
                 BayesianLinear(64, 3)
             )
             self.fc_y = torch.nn.Sequential(
-                torch.nn.Linear(last_feat, 128),
+                BayesianLinear(last_feat, 128),
                 torch.nn.LeakyReLU(),
-                torch.nn.Linear(128, 64),
+                BayesianLinear(128, 64),
                 torch.nn.LeakyReLU(),
                 BayesianLinear(64, 3)
             )
             self.fc_t = torch.nn.Sequential(
-                torch.nn.Linear(last_feat, 128),
+                BayesianLinear(last_feat, 128),
                 torch.nn.LeakyReLU(),
-                torch.nn.Linear(128, 64),
+                BayesianLinear(128, 64),
                 torch.nn.LeakyReLU(),
                 BayesianLinear(64, 3)
             )
