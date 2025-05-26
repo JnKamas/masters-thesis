@@ -35,7 +35,9 @@ def bayesian_combined_loss(preds, targets):
     loss_y = torch.mean(get_angles(pred_y, gt_y))
     loss_t = torch.nn.L1Loss()(pred_t, gt_t)
 
-    return loss_z + loss_y + args.weight * loss_t
+    total_loss = loss_z + loss_y + args.weight * loss_t
+    return total_loss, loss_z.detach(), loss_y.detach(), loss_t.detach()
+
 
 
 def train(args):
@@ -53,7 +55,6 @@ def train(args):
     loss_z_running = 0.0
     loss_y_running = 0.0
 
-
     l1_loss = torch.nn.L1Loss()
     is_bayesian = (args.modifications == "bayesian")
 
@@ -69,17 +70,27 @@ def train(args):
             pred_z, pred_y, pred_t = model(sample['xyz'].cuda())
             optimizer.zero_grad()
             if is_bayesian:
-                    loss = model.sample_elbo(
-                        sample['xyz'].cuda(),
-                        (
-                            sample['bin_transform'][:, :3, 2].cuda(),
-                            sample['bin_transform'][:, :3, 1].cuda(),
-                            sample['bin_translation'].cuda(),
-                        ),
-                        criterion=bayesian_combined_loss,  # your custom loss that splits preds/targets
-                        sample_nbr=3,
-                        complexity_cost_weight=1e-5
-                    )
+                loss_parts = []
+
+                def wrapped_loss(preds, targets):
+                    loss_total, loss_z, loss_y, loss_t = bayesian_combined_loss(preds, targets)
+                    loss_parts.append((loss_z, loss_y, loss_t))
+                    return loss_total
+
+                loss = model.sample_elbo(
+                    sample['xyz'].cuda(),
+                    (
+                        sample['bin_transform'][:, :3, 2].cuda(),
+                        sample['bin_transform'][:, :3, 1].cuda(),
+                        sample['bin_translation'].cuda(),
+                    ),
+                    criterion=wrapped_loss,
+                    sample_nbr=3,
+                    complexity_cost_weight=1e-5
+                )
+
+                loss_z, loss_y, loss_t = loss_parts[-1]
+
             else:
                 # Angle loss is used for rotational components.
                 loss_z = torch.mean(get_angles(pred_z, sample['bin_transform'][:, :3, 2].cuda()))
@@ -89,11 +100,10 @@ def train(args):
                 loss_t = args.weight * l1_loss(pred_t, sample['bin_translation'].cuda())
                 loss = loss_z + loss_y + loss_t
 
-            # Note running loss calc makes loss increase in the beginning of training! YES THIS WILL CRASH WHEN TRAINING BAYESIAN
-            if not is_bayesian:
-                loss_z_running = 0.9 * loss_z_running + 0.1 * loss_z.item()
-                loss_y_running = 0.9 * loss_y_running + 0.1 * loss_y.item()
-                loss_t_running = 0.9 * loss_t_running + 0.1 * loss_t.item()
+            # Note running loss calc makes loss increase in the beginning of training!
+            loss_z_running = 0.9 * loss_z_running + 0.1 * loss_z.item()
+            loss_y_running = 0.9 * loss_y_running + 0.1 * loss_y.item()
+            loss_t_running = 0.9 * loss_t_running + 0.1 * loss_t.item()
             loss_running = 0.9 * loss_running + 0.1 * loss.item()
 
 

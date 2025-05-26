@@ -77,7 +77,6 @@ class Dataset(Dataset):
         """
         exr_path = os.path.join(self.dataset_dir, entry['exr_positions_path'])
         exr_path = exr_path.replace("\\", "/") # #JK EDIT
-        # print("XXXXXXXXXXXXX", exr_path) ## JK EDIT
         xyz = cv2.imread(exr_path,  cv2.IMREAD_ANYCOLOR | cv2.IMREAD_ANYDEPTH)
         if xyz is None:
             print(exr_path)
