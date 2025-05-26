@@ -52,8 +52,8 @@ def infer(args, export_to_folder=True):
     np.set_printoptions(suppress=True)
 
     with torch.no_grad():
-        # if args.modifications == "mc_dropout":
-        #     enable_dropout(model)
+        if args.modifications == "mc_dropout":
+            enable_dropout(model)
 
         for sample in val_loader:
             # Monte Carlo / Bayesian branch
