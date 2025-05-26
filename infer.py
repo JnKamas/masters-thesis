@@ -15,12 +15,26 @@ def enable_dropout(model):
             module.train()
 
 def infer(args, export_to_folder=True):
+    # load and set eval()
     model = load_model(args).eval()
+
+    # figure out dataset root
     dir_path = os.path.dirname(args.path)
 
-    # resolve ~/ to your home dir
-    export_root = os.path.expanduser('~/thesis/inference')
+    # derive model name from your checkpoint arg
+    weights_path = getattr(args, 'weights', None) \
+                or getattr(args, 'weights_path', None) \
+                or getattr(args, 'resume', None)
+    if weights_path:
+        model_name = os.path.splitext(os.path.basename(weights_path))[0]
+    else:
+        model_name = 'model'
 
+    # root for all predictions: ~/inference/<model_name>
+    export_root = os.path.expanduser(f'~/thesis/inference/{model_name}')
+    os.makedirs(export_root, exist_ok=True)
+
+    # prepare data
     val_dataset = Dataset(
         args.path,
         'val',
@@ -36,14 +50,13 @@ def infer(args, export_to_folder=True):
     )
 
     np.set_printoptions(suppress=True)
-    os.makedirs(export_root, exist_ok=True)
 
     with torch.no_grad():
         if args.modifications == "mc_dropout":
             enable_dropout(model)
 
         for sample in val_loader:
-            # MC‐dropout / bayesian branch
+            # Monte Carlo / Bayesian branch
             if args.modifications in {"mc_dropout", "bayesian"}:
                 for mc_idx in range(args.mc_samples):
                     z, y, t = model(sample['xyz'].cuda())
@@ -52,9 +65,11 @@ def infer(args, export_to_folder=True):
                     pred_ts = t.cpu().numpy()
 
                     for i in range(len(pred_zs)):
-                        # build orthonormal frame
+                        # build orthonormal basis
                         z_i = pred_zs[i];   z_i /= np.linalg.norm(z_i)
-                        y_i = pred_ys[i];   y_i -= np.dot(z_i, y_i) * z_i;   y_i /= np.linalg.norm(y_i)
+                        y_i = pred_ys[i]
+                        y_i -= np.dot(z_i, y_i) * z_i
+                        y_i /= np.linalg.norm(y_i)
                         x_i = np.cross(y_i, z_i)
 
                         transform = np.zeros((4,4), dtype=np.float32)
@@ -65,17 +80,18 @@ def infer(args, export_to_folder=True):
                         transform[3,3]  = 1.0
 
                         txt_path = sample['txt_path'][i].replace("\\","/")
-                        txt_name = f'prediction{mc_idx}_{os.path.basename(txt_path).replace(".txt","")}.txt'
-                        txt_dir  = os.path.dirname(txt_path)
+                        base = os.path.basename(txt_path).replace(".txt","")
+                        txt_name = f'prediction{mc_idx}_{base}.txt'
+                        subdir   = os.path.dirname(txt_path)
 
-                        # write into ~/inference/<subfolder>/
-                        export_subdir = os.path.join(export_root, txt_dir)
-                        os.makedirs(export_subdir, exist_ok=True)
-                        export_pred = os.path.join(export_subdir, txt_name)
-                        np.savetxt(export_pred, transform.T.ravel(), fmt='%1.6f', newline=' ')
+                        # save to ~/inference/<model_name>/<subdir>/
+                        dst = os.path.join(export_root, subdir)
+                        os.makedirs(dst, exist_ok=True)
+                        out_file = os.path.join(dst, txt_name)
+                        np.savetxt(out_file, transform.T.ravel(), fmt='%1.6f', newline=' ')
 
             else:
-                # deterministic
+                # single deterministic pass
                 pred_zs, pred_ys, pred_ts = model(sample['xyz'].cuda())
                 pred_zs = pred_zs.cpu().numpy()
                 pred_ys = pred_ys.cpu().numpy()
@@ -84,15 +100,17 @@ def infer(args, export_to_folder=True):
             gt_transforms = sample['orig_transform']
 
             for i in range(len(pred_zs)):
+                # print GT vs pred
                 print("*"*20)
                 print("GT:")
                 gt = gt_transforms[i].cpu().numpy()
                 print("Det:", np.linalg.det(gt))
                 print(gt)
 
-                # build predicted frame
                 z = pred_zs[i];   z /= np.linalg.norm(z)
-                y = pred_ys[i];   y -= np.dot(z,y)*z;   y /= np.linalg.norm(y)
+                y = pred_ys[i]
+                y -= np.dot(z,y)*z
+                y /= np.linalg.norm(y)
                 x = np.cross(y, z)
 
                 transform = np.zeros((4,4), dtype=np.float32)
@@ -108,23 +126,24 @@ def infer(args, export_to_folder=True):
 
                 txt_path = sample['txt_path'][i].replace("\\","/")
                 txt_name = f'prediction_{os.path.basename(txt_path)}'
-                txt_dir  = os.path.dirname(txt_path)
+                subdir   = os.path.dirname(txt_path)
 
-                # optional: copy original scan to inference folder
-                export_subdir = os.path.join(export_root, txt_dir)
-                os.makedirs(export_subdir, exist_ok=True)
+                # copy original scan if you like
+                dst = os.path.join(export_root, subdir)
+                os.makedirs(dst, exist_ok=True)
                 orig = os.path.join(dir_path, txt_path)
                 if os.path.exists(orig):
-                    copyfile(orig, os.path.join(export_subdir, os.path.basename(txt_path)))
+                    copyfile(orig, os.path.join(dst, os.path.basename(txt_path)))
 
                 # save prediction
-                export_pred = os.path.join(export_subdir, txt_name)
-                np.savetxt(export_pred, transform.T.ravel(), fmt='%1.6f', newline=' ')
+                out_file = os.path.join(dst, txt_name)
+                np.savetxt(out_file, transform.T.ravel(), fmt='%1.6f', newline=' ')
 
 if __name__ == '__main__':
     """
     Example:
-      python infer.py --no_preload -r 200 -iw 258 -ih 193 -b 32 /path/to/MLBinsDataset/EXR/dataset.json
+      python infer.py --weights mymodel.pth --no_preload \
+           -r 200 -iw 258 -ih 193 -b 32 /path/to/dataset.json
     """
     args = parse_command_line()
     infer(args)
