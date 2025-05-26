@@ -60,30 +60,30 @@ class Network(torch.nn.Module):
             self.fc_z = torch.nn.Sequential(
                 torch.nn.Linear(last_feat, 128),
                 torch.nn.LeakyReLU(),
-                torch.nn.Dropout(0.5),
+                torch.nn.Dropout(args.dropout_prob),
                 torch.nn.Linear(128, 64),
                 torch.nn.LeakyReLU(),
-                torch.nn.Dropout(0.5),
+                torch.nn.Dropout(args.dropout_prob),
                 torch.nn.Linear(64, 3)
             )
 
             self.fc_y = torch.nn.Sequential(
                 torch.nn.Linear(last_feat, 128),
                 torch.nn.LeakyReLU(),
-                torch.nn.Dropout(0.5),
+                torch.nn.Dropout(args.dropout_prob),
                 torch.nn.Linear(128, 64),
                 torch.nn.LeakyReLU(),
-                torch.nn.Dropout(0.5),
+                torch.nn.Dropout(args.dropout_prob),
                 torch.nn.Linear(64, 3)
                 )
 
             self.fc_t = torch.nn.Sequential(
                 torch.nn.Linear(last_feat, 128),
                 torch.nn.LeakyReLU(),
-                torch.nn.Dropout(0.5),
+                torch.nn.Dropout(args.dropout_prob),
                 torch.nn.Linear(128, 64),
                 torch.nn.LeakyReLU(),
-                torch.nn.Dropout(0.5),
+                torch.nn.Dropout(args.dropout_prob),
                 torch.nn.Linear(64, 3)
             )
         elif modifications == "bayesian":
@@ -174,6 +174,7 @@ def parse_command_line():
     parser.add_argument('-vis', '--visualize', action='store_true', default=False, help='Visualize the model predictions into a file') # add JK
     parser.add_argument('-mod', '--modifications', type=str, default=None, help='Modifications to the model: mc_dropout, bayesian') # add JK
     parser.add_argument('-mc', '--mc_samples', type=int, default=30, help='Number of Monte Carlo samples for uncertainty estimation') # add JK
+    parser.add_argument('-dp', '--dropout_prob', type=float, default=0.5, help='Dropout probability for MC Dropout') # add JK
     parser.add_argument('path')
     args = parser.parse_args()
 
