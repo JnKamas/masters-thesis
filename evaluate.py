@@ -203,8 +203,13 @@ def evaluate(args):
             if lo <= mean_t[j] <= hi:
                 coverage_pred_t[j] += 1
 
-        # Rotation uncertainty metrics (classic)
-        angs = [ (sciR.from_matrix(r).inv() * sciR.from_matrix(gt_R1)).magnitude() for r in rots ]
+        angs = []
+        for r in rots:
+            q = sciR.from_matrix(r)
+            err1 = (q.inv() * sciR.from_matrix(gt_R1)).magnitude()
+            err2 = (q.inv() * sciR.from_matrix(gt_R2)).magnitude()
+            angs.append(min(err1, err2))
+
         rotation_errors.append(np.mean(angs))
         rotation_std_errors.append(np.std(angs))
 
