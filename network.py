@@ -41,7 +41,7 @@ def normalized_l2_loss(pred, gt, reduce=True):
 
 @variational_estimator
 class Network(torch.nn.Module):
-    def __init__(self, backbone='resnet18', modifications=None):
+    def __init__(self, backbone='resnet18', modifications=None, dropout_prob=0.5):
         super(Network, self).__init__()
 
         if backbone == 'resnet18':
@@ -60,30 +60,30 @@ class Network(torch.nn.Module):
             self.fc_z = torch.nn.Sequential(
                 torch.nn.Linear(last_feat, 128),
                 torch.nn.LeakyReLU(),
-                torch.nn.Dropout(args.dropout_prob),
+                torch.nn.Dropout(dropout_prob),
                 torch.nn.Linear(128, 64),
                 torch.nn.LeakyReLU(),
-                torch.nn.Dropout(args.dropout_prob),
+                torch.nn.Dropout(dropout_prob),
                 torch.nn.Linear(64, 3)
             )
 
             self.fc_y = torch.nn.Sequential(
                 torch.nn.Linear(last_feat, 128),
                 torch.nn.LeakyReLU(),
-                torch.nn.Dropout(args.dropout_prob),
+                torch.nn.Dropout(dropout_prob),
                 torch.nn.Linear(128, 64),
                 torch.nn.LeakyReLU(),
-                torch.nn.Dropout(args.dropout_prob),
+                torch.nn.Dropout(dropout_prob),
                 torch.nn.Linear(64, 3)
                 )
 
             self.fc_t = torch.nn.Sequential(
                 torch.nn.Linear(last_feat, 128),
                 torch.nn.LeakyReLU(),
-                torch.nn.Dropout(args.dropout_prob),
+                torch.nn.Dropout(dropout_prob),
                 torch.nn.Linear(128, 64),
                 torch.nn.LeakyReLU(),
-                torch.nn.Dropout(args.dropout_prob),
+                torch.nn.Dropout(dropout_prob),
                 torch.nn.Linear(64, 3)
             )
         elif modifications == "bayesian":
@@ -184,16 +184,48 @@ def parse_command_line():
 
 def load_model(args):
     """
-    Loads model. If args.resum is None weights for the backbone are pre-trained on ImageNet, otherwise previous
-    checkpoint is loaded
+    Loads model. If args.resume is None weights for the backbone are pre-trained on ImageNet,
+    otherwise previous checkpoint is loaded. If using MC Dropout, remap baseline keys to dropout model.
     """
-    model = Network(backbone=args.backbone, modifications=args.modifications).cuda()
+    model = Network(
+        backbone=args.backbone,
+        modifications=args.modifications,
+        dropout_prob=args.dropout_prob
+    ).cuda()
+
+    def remap_dropout_state_dict(base_sd):
+        """
+        Remap baseline state_dict keys to match mc_dropout layer indices:
+        fc_*.2.* → fc_*.3.*, and fc_*.4.* → fc_*.6.*
+        """
+        new_sd = {}
+        for k, v in base_sd.items():
+            parts = k.split('.')
+            name, idx = parts[0], int(parts[1])
+            if args.modifications == "mc_dropout" and name in ('fc_z','fc_y','fc_t') and idx in (2, 4):
+                # shift second Linear layer (idx=2) → 3, third Linear layer (idx=4) → 6
+                new_idx = {2: 3, 4: 6}[idx]
+                parts[1] = str(new_idx)
+                new_k = '.'.join(parts)
+            else:
+                new_k = k
+            new_sd[new_k] = v
+        return new_sd
+
     if args.weights_path is not None:
         print("Loading weights from:", args.weights_path)
-        state_dict = torch.load(args.weights_path)
-        model.load_state_dict(state_dict, strict=False)  # strict=False to allow missing weights like dropout
+        raw_state_dict = torch.load(args.weights_path, map_location='cpu')
+        # if MC Dropout variant, remap baseline keys
+        if args.modifications == "mc_dropout":
+            state_dict = remap_dropout_state_dict(raw_state_dict)
+        else:
+            state_dict = raw_state_dict
+        # load with strict=False to allow missing keys (dropout vs baseline)
+        model.load_state_dict(state_dict, strict=False)
+
     if args.resume is not None:
-        sd_path = 'checkpoints/{:03d}.pth'.format(args.resume)
-        print("Resuming from: ", sd_path)
-        model.load_state_dict(torch.load(sd_path))
+        sd_path = f'checkpoints/{args.resume:03d}.pth'
+        print("Resuming from:", sd_path)
+        model.load_state_dict(torch.load(sd_path), strict=False)
+
     return model

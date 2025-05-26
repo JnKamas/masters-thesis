@@ -52,8 +52,8 @@ def infer(args, export_to_folder=True):
     np.set_printoptions(suppress=True)
 
     with torch.no_grad():
-        if args.modifications == "mc_dropout":
-            enable_dropout(model)
+        # if args.modifications == "mc_dropout":
+        #     enable_dropout(model)
 
         for sample in val_loader:
             # Monte Carlo / Bayesian branch
@@ -142,8 +142,7 @@ def infer(args, export_to_folder=True):
 if __name__ == '__main__':
     """
     Example:
-      python infer.py --weights mymodel.pth --no_preload \
-           -r 200 -iw 258 -ih 193 -b 32 /path/to/dataset.json
+      python infer.py --weights mymodel.pth --no_preload -r 200 -iw 258 -ih 193 -b 32 /path/to/dataset.json
     """
     args = parse_command_line()
     infer(args)

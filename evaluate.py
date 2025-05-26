@@ -240,9 +240,14 @@ def evaluate(args):
         R_bar_so3 = mean_rotation_SVD(rots)
 
         # 1. Credible region radius (SO(3) ball, 95%)
-        r_alpha, prop_in_region = credible_region_radius(rots, R_bar_so3, alpha=0.95)
+        r_alpha, _ = credible_region_radius(rots, R_bar_so3, alpha=0.95)
         credible_region_radii.append(r_alpha)
-        credible_region_coverages.append(prop_in_region)
+        #  -- empirical coverage: does GT lie inside that ball? --
+        # account for 180° symmetry
+        d1 = geodesic_distance(gt_R1, R_bar_so3)
+        d2 = geodesic_distance(gt_R2, R_bar_so3)
+        covered = (min(d1, d2) <= r_alpha)
+        credible_region_coverages.append(covered)
 
         # 2. EAAD
         eaad_val = eaad(rots, R_bar_so3)
