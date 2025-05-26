@@ -1,10 +1,8 @@
 import os
-
 import torch
 import cv2
 import numpy as np
 from dataset import Dataset
-
 from network import Network, parse_command_line, load_model
 from scipy.spatial.transform.rotation import Rotation
 from torch.utils.data import DataLoader
@@ -18,122 +16,115 @@ def enable_dropout(model):
 
 def infer(args, export_to_folder=True):
     model = load_model(args).eval()
-
     dir_path = os.path.dirname(args.path)
 
-    val_dataset = Dataset(args.path, 'val', args.input_width, args.input_height, preload=not args.no_preload)
-    val_loader = DataLoader(val_dataset, batch_size=args.batch_size, shuffle=False, num_workers=args.workers)
+    # resolve ~/ to your home dir
+    export_root = os.path.expanduser('~/thesis/inference')
+
+    val_dataset = Dataset(
+        args.path,
+        'val',
+        args.input_width,
+        args.input_height,
+        preload=not args.no_preload
+    )
+    val_loader = DataLoader(
+        val_dataset,
+        batch_size=args.batch_size,
+        shuffle=False,
+        num_workers=args.workers
+    )
 
     np.set_printoptions(suppress=True)
+    os.makedirs(export_root, exist_ok=True)
 
     with torch.no_grad():
         if args.modifications == "mc_dropout":
             enable_dropout(model)
 
         for sample in val_loader:
+            # MC‐dropout / bayesian branch
             if args.modifications in {"mc_dropout", "bayesian"}:
                 for mc_idx in range(args.mc_samples):
                     z, y, t = model(sample['xyz'].cuda())
                     pred_zs = z.cpu().numpy()
                     pred_ys = y.cpu().numpy()
                     pred_ts = t.cpu().numpy()
-                    # Now, save each MC prediction separately
+
                     for i in range(len(pred_zs)):
-                        # ... create your transform matrix as before ...
-                        z_i = pred_zs[i]
-                        z_i /= np.linalg.norm(z_i)
-                        y_i = pred_ys[i]
-                        y_i = y_i - np.dot(z_i, y_i) * z_i
-                        y_i /= np.linalg.norm(y_i)
+                        # build orthonormal frame
+                        z_i = pred_zs[i];   z_i /= np.linalg.norm(z_i)
+                        y_i = pred_ys[i];   y_i -= np.dot(z_i, y_i) * z_i;   y_i /= np.linalg.norm(y_i)
                         x_i = np.cross(y_i, z_i)
-                        transform = np.zeros([4, 4])
-                        transform[:3, 0] = x_i
-                        transform[:3, 1] = y_i
-                        transform[:3, 2] = z_i
-                        transform[:3, 3] = pred_ts[i]
-                        transform[3, 3] = 1
 
-                        txt_path = sample['txt_path'][i].replace("\\", "/")
-                        txt_name = f'prediction{mc_idx}_{os.path.basename(txt_path).replace(".txt", "")}.txt'
-                        txt_dir = os.path.dirname(txt_path)
+                        transform = np.zeros((4,4), dtype=np.float32)
+                        transform[:3,0] = x_i
+                        transform[:3,1] = y_i
+                        transform[:3,2] = z_i
+                        transform[:3,3] = pred_ts[i]
+                        transform[3,3]  = 1.0
 
-                        save_txt_path = os.path.join(dir_path, txt_dir, txt_name)
-                        os.makedirs(os.path.dirname(save_txt_path), exist_ok=True)
+                        txt_path = sample['txt_path'][i].replace("\\","/")
+                        txt_name = f'prediction{mc_idx}_{os.path.basename(txt_path).replace(".txt","")}.txt'
+                        txt_dir  = os.path.dirname(txt_path)
 
-                        if export_to_folder:
-                            export_root = dir_path + 'Inference'
-                            export_subdir = os.path.join(export_root, txt_dir)
-                            os.makedirs(export_subdir, exist_ok=True)
-                            export_pred_path = os.path.join(export_subdir, txt_name)
-                            np.savetxt(export_pred_path, transform.T.ravel(), fmt='%1.6f', newline=' ')
+                        # write into ~/inference/<subfolder>/
+                        export_subdir = os.path.join(export_root, txt_dir)
+                        os.makedirs(export_subdir, exist_ok=True)
+                        export_pred = os.path.join(export_subdir, txt_name)
+                        np.savetxt(export_pred, transform.T.ravel(), fmt='%1.6f', newline=' ')
+
             else:
+                # deterministic
                 pred_zs, pred_ys, pred_ts = model(sample['xyz'].cuda())
                 pred_zs = pred_zs.cpu().numpy()
                 pred_ys = pred_ys.cpu().numpy()
                 pred_ts = pred_ts.cpu().numpy()
+
             gt_transforms = sample['orig_transform']
 
             for i in range(len(pred_zs)):
-                print(20 * '*')
+                print("*"*20)
                 print("GT:")
-                gt_transform = gt_transforms[i].cpu().numpy()
-                print("Det: ", np.linalg.det(gt_transform))
-                print(gt_transform)
+                gt = gt_transforms[i].cpu().numpy()
+                print("Det:", np.linalg.det(gt))
+                print(gt)
 
-                z = pred_zs[i]
-                z /= np.linalg.norm(z)
-
-                y = pred_ys[i]
-                y = y - np.dot(z, y) * z
-                y /= np.linalg.norm(y)
-
+                # build predicted frame
+                z = pred_zs[i];   z /= np.linalg.norm(z)
+                y = pred_ys[i];   y -= np.dot(z,y)*z;   y /= np.linalg.norm(y)
                 x = np.cross(y, z)
 
-                transform = np.zeros([4, 4])
-                transform[:3, 0] = x
-                transform[:3, 1] = y
-                transform[:3, 2] = z
+                transform = np.zeros((4,4), dtype=np.float32)
+                transform[:3,0] = x
+                transform[:3,1] = y
+                transform[:3,2] = z
+                transform[:3,3] = pred_ts[i]
+                transform[3,3]  = 1.0
 
-                transform[:3, 3] = pred_ts[i]
-                transform[3, 3] = 1
                 print("Predict:")
-                print("Det: ", np.linalg.det(transform))
+                print("Det:", np.linalg.det(transform))
                 print(transform)
 
-                txt_path = sample['txt_path'][i].replace("\\", "/")
-                print(txt_path)
-
+                txt_path = sample['txt_path'][i].replace("\\","/")
                 txt_name = f'prediction_{os.path.basename(txt_path)}'
-                txt_dir = os.path.dirname(txt_path)
+                txt_dir  = os.path.dirname(txt_path)
 
-                # Save prediction to original dataset folder
-                save_txt_path = os.path.join(dir_path, txt_dir, txt_name)
-                os.makedirs(os.path.dirname(save_txt_path), exist_ok=True)
-                # np.savetxt(save_txt_path, transform.T.ravel(), fmt='%1.6f', newline=' ')
+                # optional: copy original scan to inference folder
+                export_subdir = os.path.join(export_root, txt_dir)
+                os.makedirs(export_subdir, exist_ok=True)
+                orig = os.path.join(dir_path, txt_path)
+                if os.path.exists(orig):
+                    copyfile(orig, os.path.join(export_subdir, os.path.basename(txt_path)))
 
-                if export_to_folder:
-                    """
-                    Copies original scan and adds prediction into 'datasetInference/' while preserving folder structure.
-                    """
-                    export_root = dir_path + 'Inference'  # e.g., datasetInference
-                    export_subdir = os.path.join(export_root, txt_dir)  # e.g., datasetInference/dataset0
-                    os.makedirs(export_subdir, exist_ok=True)
-
-                    # 1. Copy scan_000.txt from original dataset
-                    original_scan_path = os.path.join(dir_path, txt_path)
-                    export_scan_path = os.path.join(export_subdir, os.path.basename(txt_path))
-                    if os.path.exists(original_scan_path) and not os.path.exists(export_scan_path):
-                        copyfile(original_scan_path, export_scan_path)
-
-                    # 2. Save predicted transform
-                    export_pred_path = os.path.join(export_subdir, txt_name)
-                    np.savetxt(export_pred_path, transform.T.ravel(), fmt='%1.6f', newline=' ')
-
+                # save prediction
+                export_pred = os.path.join(export_subdir, txt_name)
+                np.savetxt(export_pred, transform.T.ravel(), fmt='%1.6f', newline=' ')
 
 if __name__ == '__main__':
     """
-    Runs inference and writes prediction txt files.
-    Example usage: python infer.py --no_preload -r 200 -iw 258 -ih 193 -b 32 /path/to/MLBinsDataset/EXR/dataset.json
+    Example:
+      python infer.py --no_preload -r 200 -iw 258 -ih 193 -b 32 /path/to/MLBinsDataset/EXR/dataset.json
     """
     args = parse_command_line()
     infer(args)
