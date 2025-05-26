@@ -57,9 +57,9 @@ def parse_command_line():
     parser.add_argument('-vis', '--visualize', action='store_true', default=False, help='Visualize the model predictions into a file') # add JK
     parser.add_argument('-mod', '--modifications', type=str, default=None, help='Modifications to the model: mc_dropout, bayesian') # add JK
     parser.add_argument('-mc', '--mc_samples', type=int, default=30, help='Number of Monte Carlo samples for uncertainty estimation') # add JK
-    parser.add_argument('-dpt', '--dropout_prob_trans', type=float, default=0.5, help='Dropout probability for translation') # add JK
-    parser.add_argument('-dpr', '--dropout_prob_rot', type=float, default=0.5, help='Dropout probability for rotation') # add JK
-    parser.add_argument('-dp', '--dropout_prob', type=float, default=0.5, help='Dropout probability for MC Dropout') # add JK
+    parser.add_argument('-dpt', '--dropout_prob_trans', type=float, default=0, help='Dropout probability for translation') # add JK
+    parser.add_argument('-dpr', '--dropout_prob_rot', type=float, default=0, help='Dropout probability for rotation') # add JK
+    parser.add_argument('-dp', '--dropout_prob', type=float, default=0, help='Dropout probability for MC Dropout') # add JK
     parser.add_argument('path')
     args = parser.parse_args()
 
@@ -72,11 +72,8 @@ def load_model(args):
     Loads model. If args.resume is None weights for the backbone are pre-trained on ImageNet,
     otherwise previous checkpoint is loaded. If using MC Dropout, remap baseline keys to dropout model.
     """
-    model = Network(
-        backbone=args.backbone,
-        modifications=args.modifications,
-        dropout_prob=args.dropout_prob
-    ).cuda()
+
+    model = Network(args).cuda()
 
     def remap_dropout_state_dict(base_sd):
         """
