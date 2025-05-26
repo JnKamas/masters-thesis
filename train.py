@@ -2,7 +2,8 @@ import torch
 import numpy as np
 import os
 
-from network import normalized_l2_loss, parse_command_line, load_model
+from network import *
+from network_helpers import normalized_l2_loss, parse_command_line, load_model
 from dataset import Dataset
 from torch.utils.data import DataLoader
 

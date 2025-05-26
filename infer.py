@@ -3,7 +3,8 @@ import torch
 import cv2
 import numpy as np
 from dataset import Dataset
-from network import Network, parse_command_line, load_model
+from network import Network
+from network_helpers import  parse_command_line, load_model
 from scipy.spatial.transform.rotation import Rotation
 from torch.utils.data import DataLoader
 from shutil import copyfile
