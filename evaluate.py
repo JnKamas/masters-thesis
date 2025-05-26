@@ -303,6 +303,6 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument('path', help='Path to dataset root folder.')
     parser.add_argument('-mod', '--modifications', type=str, default='none', help='Modifications to the model (e.g., mc_dropout)')
-    parser.add_argument('-mc', '--mc_samples', type=int, default=10, help='Number of MC samples to average over (for MC dropout)')
+    parser.add_argument('-mc', '--mc_samples', type=int, default=30, help='Number of MC samples to average over (for MC dropout)')
     args = parser.parse_args()
     evaluate(args)
