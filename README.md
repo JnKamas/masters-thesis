@@ -18,4 +18,7 @@ https://liveuniba-my.sharepoint.com/:f:/g/personal/gajdosech2_uniba_sk/EmTGItM-m
 **Dataset:**  
 https://liveuniba-my.sharepoint.com/:f:/g/personal/gajdosech2_uniba_sk/EtTuc2-ccudNkgQSqKiNFqUBBZw2WQNWyRs2Th4yXOoODQ?e=i5twkn
 
+**Dataset via Seletex link:**
+https://liveuniba-my.sharepoint.com/personal/madaras2_uniba_sk/_layouts/15/onedrive.aspx?id=%2Fpersonal%2Fmadaras2%5Funiba%5Fsk%2FDocuments%2FGajdosech%5Fetal%5F2021%5Fdataset&ga=1
+
 **NOTE:** Annotation files with suffixes `_bad`, `_ish`, or `_catastrophic` should be ignored. It was not possible to annotate them correctly with our current toolset.
