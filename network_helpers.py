@@ -1,8 +1,10 @@
 import argparse
 import os
+import math
 
 from network import Network
 import torch
+
 
 def points_loss_function(y_pred, y, vec):
     """Unused loss function"""
@@ -35,6 +37,7 @@ def normalized_l2_loss(pred, gt, reduce=True):
     else:
         return loss
 
+
 def parse_command_line():
     """ Parser used for training and inference returns args. Sets up GPUs."""
     parser = argparse.ArgumentParser()
@@ -53,13 +56,13 @@ def parse_command_line():
     parser.add_argument('-ns', '--noise_sigma', type=float, default=None)
     parser.add_argument('-ts', '--t_sigma', type=float, default=0.0)
     parser.add_argument('-rr', '--random_rot', action='store_true', default=False)
-    parser.add_argument('-wp', '--weights_path', type=str, default=None, help='Path to the model weights file') # add JK
-    parser.add_argument('-vis', '--visualize', action='store_true', default=False, help='Visualize the model predictions into a file') # add JK
-    parser.add_argument('-mod', '--modifications', type=str, default=None, help='Modifications to the model: mc_dropout, bayesian') # add JK
-    parser.add_argument('-mc', '--mc_samples', type=int, default=30, help='Number of Monte Carlo samples for uncertainty estimation') # add JK
-    parser.add_argument('-dpt', '--dropout_prob_trans', type=float, default=0, help='Dropout probability for translation') # add JK
-    parser.add_argument('-dpr', '--dropout_prob_rot', type=float, default=0, help='Dropout probability for rotation') # add JK
-    parser.add_argument('-dp', '--dropout_prob', type=float, default=0, help='Dropout probability for MC Dropout') # add JK
+    parser.add_argument('-wp', '--weights_path', type=str, default=None, help='Path to the model weights file')
+    parser.add_argument('-vis', '--visualize', action='store_true', default=False, help='Visualize the model predictions into a file')
+    parser.add_argument('-mod', '--modifications', type=str, default=None, help='Modifications to the model: mc_dropout, bayesian')
+    parser.add_argument('-mc', '--mc_samples', type=int, default=30, help='Number of Monte Carlo samples for uncertainty estimation')
+    parser.add_argument('-dpt', '--dropout_prob_trans', type=float, default=0, help='Dropout probability for translation')
+    parser.add_argument('-dpr', '--dropout_prob_rot', type=float, default=0, help='Dropout probability for rotation')
+    parser.add_argument('-dp', '--dropout_prob', type=float, default=0, help='Dropout probability for MC Dropout')
     parser.add_argument('path')
     args = parser.parse_args()
 
@@ -67,47 +70,102 @@ def parse_command_line():
         os.environ["CUDA_VISIBLE_DEVICES"] = args.gpu
     return args
 
+def remap_bayesian_state_dict(raw_sd, init_sigma=0.1):
+    """
+    Turn a vanilla checkpoint into a full Bayesian state dict:
+      - fc_*.{weight,bias} → …_mu
+      - Inject matching …_rho, …_sampler.{mu,rho,eps_w|eps_b}
+    """
+    # 1) compute ρ₀ so σ = log(1 + e^ρ₀) ≈ init_sigma
+    rho0 = math.log(math.exp(init_sigma) - 1.0)
+
+    # 2) first pass: remap mu keys
+    base_sd = {}
+    for k, v in raw_sd.items():
+        prefix = k.split('.')[0]
+        if prefix in ('fc_z','fc_y','fc_t') and k.endswith(('weight','bias')):
+            base_sd[k + '_mu'] = v
+        else:
+            base_sd[k] = v
+
+    # 3) second pass: expand each mu into rho + sampler
+    full_sd = {}
+    for k, v in base_sd.items():
+        full_sd[k] = v
+        if k.endswith('_mu'):
+            base_key = k[:-3]  # strip "_mu"
+
+            # a) rho → filled with ρ₀
+            full_sd[base_key + '_rho'] = torch.full_like(v, rho0)
+
+            # b) sampler.mu (copy of μ)
+            full_sd[f"{base_key}_sampler.mu"] = v.clone()
+
+            # c) sampler.rho (filled with ρ₀)
+            full_sd[f"{base_key}_sampler.rho"] = torch.full_like(v, rho0)
+
+            # d) sampler.eps_w / eps_b (random normals)
+            full_sd[f"{base_key}_sampler.eps_w"] = torch.randn_like(v)
+
+
+    return full_sd
+
+def remap_dropout_state_dict(base_sd):
+    """
+    Remap baseline state_dict keys to match mc_dropout layer indices:
+    fc_*.2.* → fc_*.3.*, and fc_*.4.* → fc_*.6.*
+    """
+    new_sd = {}
+    for k, v in base_sd.items():
+        parts = k.split('.')
+        name, idx = parts[0], int(parts[1])
+        if name in ('fc_z','fc_y','fc_t') and idx in (2, 4):
+            new_idx = {2: 3, 4: 6}[idx]
+            parts[1] = str(new_idx)
+            new_k = '.'.join(parts)
+        else:
+            new_k = k
+        new_sd[new_k] = v
+    return new_sd
+
 def load_model(args):
     """
     Loads model. If args.resume is None weights for the backbone are pre-trained on ImageNet,
-    otherwise previous checkpoint is loaded. If using MC Dropout, remap baseline keys to dropout model.
+    otherwise previous checkpoint is loaded. Supports both MC Dropout and Bayesian layers:
+      - mc_dropout: remap baseline keys to dropout model indices
+      - bayesian: remap to weight_mu/bias_mu and initialize rho for Bayesian layers
     """
 
     model = Network(args).cuda()
 
-    def remap_dropout_state_dict(base_sd):
-        """
-        Remap baseline state_dict keys to match mc_dropout layer indices:
-        fc_*.2.* → fc_*.3.*, and fc_*.4.* → fc_*.6.*
-        """
-        new_sd = {}
-        for k, v in base_sd.items():
-            parts = k.split('.')
-            name, idx = parts[0], int(parts[1])
-            if args.modifications == "mc_dropout" and name in ('fc_z','fc_y','fc_t') and idx in (2, 4):
-                # shift second Linear layer (idx=2) → 3, third Linear layer (idx=4) → 6
-                new_idx = {2: 3, 4: 6}[idx]
-                parts[1] = str(new_idx)
-                new_k = '.'.join(parts)
-            else:
-                new_k = k
-            new_sd[new_k] = v
-        return new_sd
 
     if args.weights_path is not None:
         print("Loading weights from:", args.weights_path)
-        raw_state_dict = torch.load(args.weights_path, map_location='cpu')
-        # if MC Dropout variant, remap baseline keys
+        raw_sd = torch.load(args.weights_path, map_location='cpu')
         if args.modifications == "mc_dropout":
-            state_dict = remap_dropout_state_dict(raw_state_dict)
+            state_dict = remap_dropout_state_dict(raw_sd)
+        elif args.modifications == "bayesian":
+            raw_sd = torch.load(args.weights_path, map_location='cpu')
+            state_dict = remap_bayesian_state_dict(raw_sd, init_sigma=0.1)
+            missing, unexpected = model.load_state_dict(state_dict, strict=False)
+            if missing or unexpected:
+                print("Bayesian load – missing keys:", missing)
+                print("Bayesian load – unexpected keys:", unexpected)
         else:
-            state_dict = raw_state_dict
-        # load with strict=False to allow missing keys (dropout vs baseline)
-        model.load_state_dict(state_dict, strict=False)
+            state_dict = raw_sd
+        model.load_state_dict(state_dict, strict=True)
+
+        # Initialize rho for Bayesian layers so sigma ≈ 0.1
+        if args.modifications == "bayesian":
+            init_sigma = 0.1
+            rho0 = math.log(math.exp(init_sigma) - 1.0)
+            for name, param in model.named_parameters():
+                if name.endswith("weight_rho") or name.endswith("bias_rho"):
+                    param.data.fill_(rho0)
 
     if args.resume is not None:
         sd_path = f'checkpoints/{args.resume:03d}.pth'
         print("Resuming from:", sd_path)
-        model.load_state_dict(torch.load(sd_path), strict=False)
+        model.load_state_dict(torch.load(sd_path), strict=True)
 
     return model

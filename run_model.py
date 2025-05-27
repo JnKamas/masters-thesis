@@ -44,7 +44,48 @@ def main():
     if args.modifications: eval_cmd += ['--modifications', args.modifications]
     eval_cmd += ['--mc_samples', str(args.mc_samples), infer_out]
     print("▶︎ Evaluation:", ' '.join(eval_cmd))
-    sys.exit(subprocess.run(eval_cmd).returncode)
+    # Run evaluate.py and capture stdout
+    result = subprocess.run(eval_cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
+
+    # Extract everything from "Evaluated samples" onward
+    output_lines = result.stdout.splitlines()
+    start_idx = next((i for i, line in enumerate(output_lines) if line.startswith("Evaluated samples")), None)
+
+    # If found, slice the output from that point onward
+    evaluated_block = output_lines[start_idx:] if start_idx is not None else []
+
+    # Save to results/model_name.txt
+    results_dir = os.path.join(proj_root, 'results')
+    os.makedirs(results_dir, exist_ok=True)
+    name = args.model_name
+    try: 
+        name += f"_dpt{args.dropout_prob_trans}"
+    except:
+        pass
+    try:
+        name += f"_dpr{args.dropout_prob_rot}"
+    except:
+        pass
+    try:
+        name += f"_dp{args.dropout_prob}"
+    except:
+        pass
+    try:
+        name += f"_{args.modifications}"
+    except:
+        pass
+    result_file = os.path.join(results_dir, name + '.txt')
+
+    with open(result_file, 'w') as f:
+        for line in evaluated_block:
+            f.write(line + '\n')
+
+    # Optionally print the full output (for debugging/logs)
+    print(result.stdout)
+
+    # Exit with the same return code
+    sys.exit(result.returncode)
+
 
 if __name__=='__main__':
     main()
