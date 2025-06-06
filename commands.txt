@@ -1,19 +1,5 @@
-# Here are all the models that will be auto-Evaluated
-
-# dropouts rerun with mc samples 100
-#python ~/thesis/masters-thesis/run_model.py -mod mc_dropout -dp 0 -mc 100 quartres_resnet34_synth
-#python ~/thesis/masters-thesis/run_model.py -mod mc_dropout -dp 0.05 -mc 100 quartres_resnet34_synth
-#python ~/thesis/masters-thesis/run_model.py -mod mc_dropout -dp 0.1 -mc 100 quartres_resnet34_synth
-#python ~/thesis/masters-thesis/run_model.py -mod mc_dropout -dp 0.3 -mc 100 quartres_resnet34_synth
-#python ~/thesis/masters-thesis/run_model.py -mod mc_dropout -dp 0.5 -mc 100 quartres_resnet34_synth
-#python ~/thesis/masters-thesis/run_model.py -mod mc_dropout -dpt 0.05 -dpr 0.1 -mc 100 quartres_resnet34_synth
-#python ~/thesis/masters-thesis/run_model.py -mod mc_dropout -dpt 0.10 -dpr 0.15 -mc 100 quartres_resnet34_synth
-#python ~/thesis/masters-thesis/run_model.py -mod mc_dropout -dpt 0.10 -dpr 0.20 -mc 100 quartres_resnet34_synth
-#python ~/thesis/masters-thesis/run_model.py -mod mc_dropout -dpt 0.10 -dpr 0.30 -mc 100 quartres_resnet34_synth
-
-# Bayes finetune eval
-python ~/thesis/masters-thesis/run_model.py -mod bayesian -mc 100 bayes_ft050
-python ~/thesis/masters-thesis/run_model.py -mod bayesian -mc 100 bayes_ft100
-python ~/thesis/masters-thesis/run_model.py -mod bayesian -mc 100 bayes_ft200
-python ~/thesis/masters-thesis/run_model.py -mod bayesian -mc 100 bayes_ft300
-python ~/thesis/masters-thesis/run_model.py -mod bayesian -mc 100 bayes_ft500
+python masters-thesis/train.py -bb resnet34 -iw 516 -ih 386 -b 12 -e 20 -de 10 -lr 1e-4 -w 0.1 -ccw 1e-3 -bt 0 -mod bayesian -wp models/quartres_resnet34_synth.pth large-data/complete/dataset.json
+python masters-thesis/train.py -bb resnet34 -iw 516 -ih 386 -b 12 -e 20 -de 10 -lr 1e-4 -w 0.1 -ccw 1e-3 -bt 1 -mod bayesian -wp models/quartres_resnet34_synth.pth large-data/complete/dataset.json
+python masters-thesis/train.py -bb resnet34 -iw 516 -ih 386 -b 12 -e 20 -de 10 -lr 1e-4 -w 0.1 -ccw 1e-3 -bt 2 -mod bayesian -wp models/quartres_resnet34_synth.pth large-data/complete/dataset.json
+python masters-thesis/train.py -bb resnet34 -iw 516 -ih 386 -b 12 -e 20 -de 10 -lr 1e-4 -w 0.1 -ccw 1e-3 -bt 3 -mod bayesian -wp models/quartres_resnet34_synth.pth large-data/complete/dataset.json
+python masters-thesis/train.py -bb resnet34 -iw 516 -ih 386 -b 12 -e 20 -de 10 -lr 1e-4 -w 0.1 -ccw 1e-3 -bt 4 -mod bayesian -wp models/quartres_resnet34_synth.pth large-data/complete/dataset.json

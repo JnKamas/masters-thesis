@@ -63,6 +63,9 @@ def parse_command_line():
     parser.add_argument('-dpt', '--dropout_prob_trans', type=float, default=0, help='Dropout probability for translation')
     parser.add_argument('-dpr', '--dropout_prob_rot', type=float, default=0, help='Dropout probability for rotation')
     parser.add_argument('-dp', '--dropout_prob', type=float, default=0, help='Dropout probability for MC Dropout')
+    parser.add_argument('-sn', '--sample_nbr', type=int, default=3, help='Sample number for MC Dropout')
+    parser.add_argument('-ccw', '--complexity_cost_weight', type=float, default=0.5, help='Weight for complexity cost in Bayesian layers')
+    parser.add_argument('-bt', '--bayesian_type' , type=int, default=0, help='Bayesian type: 0 for full MLP Bayesian, 1 for first MLP layer Bayesian, 2 for last MLP layer Bayesian, 3 for only ResNet bayesian, 4 for complete bayesian')
     parser.add_argument('path')
     args = parser.parse_args()
 

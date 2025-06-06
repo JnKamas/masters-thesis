@@ -8,6 +8,7 @@ from dataset import Dataset
 from torch.utils.data import DataLoader
 
 
+
 def get_angles(pred, gt, sym_inv=False, eps=1e-7):
     """
     Calculates angle between pred and gt vectors.
@@ -28,7 +29,7 @@ def get_angles(pred, gt, sym_inv=False, eps=1e-7):
         angles = torch.acos(torch.clamp(dot/(eps + pred_norm * gt_norm), -1 + eps, 1 - eps))
     return angles
 
-def bayesian_combined_loss(preds, targets):
+def bayesian_combined_loss(args, preds, targets):
     pred_z, pred_y, pred_t = preds
     gt_z, gt_y, gt_t = targets
 
@@ -74,7 +75,7 @@ def train(args):
                 loss_parts = []
 
                 def wrapped_loss(preds, targets):
-                    loss_total, loss_z, loss_y, loss_t = bayesian_combined_loss(preds, targets)
+                    loss_total, loss_z, loss_y, loss_t = bayesian_combined_loss(args, preds, targets)
                     loss_parts.append((loss_z, loss_y, loss_t))
                     return loss_total
 
@@ -86,8 +87,8 @@ def train(args):
                         sample['bin_translation'].cuda(),
                     ),
                     criterion=wrapped_loss,
-                    sample_nbr=3,
-                    complexity_cost_weight=1e-5
+                    sample_nbr=args.sample_nbr if args.sample_nbr is not None else 3,
+                    complexity_cost_weight=args.complexity_cost_weight if args.complexity_cost_weight is not None else 1e-5
                 )
 
                 loss_z, loss_y, loss_t = loss_parts[-1]
@@ -111,7 +112,6 @@ def train(args):
             print("Running loss: {}, z loss: {}, y loss: {}, t loss: {}"
                   .format(loss_running,  loss_z_running, loss_y_running, loss_t_running))
 
-            optimizer.zero_grad()
             loss.backward()
             optimizer.step()
 
@@ -165,6 +165,9 @@ def train(args):
 
         with open("loss_log.txt", "a") as f:
             f.write(f"{e+1}\t{loss_running:.6f}\t{np.mean(val_losses):.6f}\n")
+
+    final_model_name = f'models/bayes_type{args.complexity_cost_weight}.pth'
+    torch.save(model.state_dict(), final_model_name)
 
     # toto mi neslo... ale mozno to pojde ked pridam .item() ku train_loss_all akoze kde sa to pridava
     np.set_printoptions(suppress=True) 

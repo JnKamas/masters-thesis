@@ -1,10 +1,11 @@
 import torch
 import torchvision
-from blitz.modules import BayesianLinear
+from blitz.modules import BayesianLinear, BayesianConv2d
+from blitz.models import BayesianModule
 from blitz.utils import variational_estimator
 
 @variational_estimator
-class Network(torch.nn.Module):
+class Network(BayesianModule):
     def __init__(self, args):
         super(Network, self).__init__()
 
@@ -18,6 +19,10 @@ class Network(torch.nn.Module):
             pretrained_backbone_model = torchvision.models.resnet34(pretrained=True)
         else:
             pretrained_backbone_model = torchvision.models.resnet50(pretrained=True)
+
+        if args.modifications == "bayesian" and args.bayesian_type in {3, 4}:
+            # here to replace the resnet with bayesian resnet. to do later
+            pass
 
         last_feat = list(pretrained_backbone_model.children())[-1].in_features // 2
         self.backbone = torch.nn.Sequential(*list(pretrained_backbone_model.children())[:-3])
@@ -34,6 +39,28 @@ class Network(torch.nn.Module):
             )
 
         def make_bayesian_branch():
+            if type == 1:
+                # First MLP layer Bayesian
+                return torch.nn.Sequential(
+                    BayesianLinear(last_feat, 128),
+                    torch.nn.LeakyReLU(),
+                    torch.nn.Linear(128, 64),
+                    torch.nn.LeakyReLU(),
+                    torch.nn.Linear(64, 3)
+                )
+            elif type == 2:
+                # Last MLP layer Bayesian
+                return torch.nn.Sequential(
+                    torch.nn.Linear(last_feat, 128),
+                    torch.nn.LeakyReLU(),
+                    torch.nn.Linear(128, 64),
+                    torch.nn.LeakyReLU(),
+                    BayesianLinear(64, 3)
+                )
+            elif type == 3:
+                # Only ResNet Bayesian
+                return make_standard_branch()
+            # Complete Bayesian (type 0, 4)
             return torch.nn.Sequential(
                 BayesianLinear(last_feat, 128),
                 torch.nn.LeakyReLU(),
@@ -56,9 +83,9 @@ class Network(torch.nn.Module):
             self.fc_y = make_dropout_branch(rot_dropout)
             self.fc_t = make_dropout_branch(trans_dropout)
         elif args.modifications == "bayesian":
-            self.fc_z = make_bayesian_branch()
-            self.fc_y = make_bayesian_branch()
-            self.fc_t = make_bayesian_branch()
+            self.fc_z = make_bayesian_branch(args.bayesian_type)
+            self.fc_y = make_bayesian_branch(args.bayesian_type)
+            self.fc_t = make_bayesian_branch(args.bayesian_type)
         else:
             self.fc_z = make_standard_branch()
             self.fc_y = make_standard_branch()

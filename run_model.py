@@ -4,6 +4,7 @@ import os, sys, argparse, subprocess, shutil
 def main():
     script_dir = os.path.dirname(os.path.realpath(__file__))
     proj_root = os.path.normpath(os.path.join(script_dir, '..'))
+    # I need to merge two parsers which I have, but the main issue is that I cannot include moel_name in the other one... just TODO
     parser = argparse.ArgumentParser(description="Run inference + evaluation in one command")
     parser.add_argument('model_name', help="Name of the model (without .pth), e.g. bayes1300")
     parser.add_argument('-mod','--modifications',choices=['mc_dropout','bayesian'],default=None,help="Modification type (options: mc_dropout, bayesian)")
@@ -17,6 +18,9 @@ def main():
     parser.add_argument('-dpt', '--dropout_prob_trans', type=float, default=0, help='Dropout probability for translation') # add JK
     parser.add_argument('-dpr', '--dropout_prob_rot', type=float, default=0, help='Dropout probability for rotation') # add JK
     parser.add_argument('-dp', '--dropout_prob', type=float, default=0, help='Dropout probability for MC Dropout') # add JK
+    parser.add_argument('-sn', '--sample_nbr', type=int, default=0, help='Sample number for MC Dropout')
+    parser.add_argument('-ccw', '--complexity_cost_weight', type=float, default=0.0, help='Weight for complexity cost in Bayesian layers')
+    parser.add_argument('-bt', '--bayesian_type' , type=int, default=0, help='Bayesian type: 0 for full MLP Bayesian, 1 for first MLP layer Bayesian, 2 for last MLP layer Bayesian, 3 for only ResNet bayesian, 4 for complete bayesian')
     args = parser.parse_args()
 
     infer_script = os.path.join(script_dir, 'infer.py')
@@ -30,7 +34,7 @@ def main():
     os.makedirs(infer_out, exist_ok=True)
 
     # build & run infer.py
-    infer_cmd = [sys.executable, infer_script, '-bb', args.backbone, '-dpt', str(args.dropout_prob_trans), '-dpr', str(args.dropout_prob_rot), '-b', str(args.batch_size), '-dp', str(args.dropout_prob)]
+    infer_cmd = [sys.executable, infer_script, '-bb', args.backbone, '-dpt', str(args.dropout_prob_trans), '-dpr', str(args.dropout_prob_rot), '-b', str(args.batch_size), '-dp', str(args.dropout_prob), '-sn', str(args.sample_nbr), '-ccw', str(args.complexity_cost_weight), '-bt', str(args.bayesian_type)]
     if args.modifications: infer_cmd += ['-mod', args.modifications]
     infer_cmd += ['--weights_path', weights_path, '--mc_samples', str(args.mc_samples)]
     if args.no_preload: infer_cmd.append('--no_preload')
