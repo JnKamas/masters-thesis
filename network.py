@@ -1,11 +1,10 @@
 import torch
 import torchvision
 from blitz.modules import BayesianLinear, BayesianConv2d
-from blitz.models import BayesianModule
 from blitz.utils import variational_estimator
 
 @variational_estimator
-class Network(BayesianModule):
+class Network(torch.nn.Module):
     def __init__(self, args):
         super(Network, self).__init__()
 
@@ -38,8 +37,8 @@ class Network(BayesianModule):
                 torch.nn.Linear(64, 3)
             )
 
-        def make_bayesian_branch():
-            if type == 1:
+        def make_bayesian_branch(btype):
+            if btype == 1:
                 # First MLP layer Bayesian
                 return torch.nn.Sequential(
                     BayesianLinear(last_feat, 128),
@@ -48,7 +47,7 @@ class Network(BayesianModule):
                     torch.nn.LeakyReLU(),
                     torch.nn.Linear(64, 3)
                 )
-            elif type == 2:
+            elif btype == 2:
                 # Last MLP layer Bayesian
                 return torch.nn.Sequential(
                     torch.nn.Linear(last_feat, 128),
@@ -57,7 +56,7 @@ class Network(BayesianModule):
                     torch.nn.LeakyReLU(),
                     BayesianLinear(64, 3)
                 )
-            elif type == 3:
+            elif btype == 3:
                 # Only ResNet Bayesian
                 return make_standard_branch()
             # Complete Bayesian (type 0, 4)

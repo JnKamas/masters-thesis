@@ -73,7 +73,7 @@ def parse_command_line():
         os.environ["CUDA_VISIBLE_DEVICES"] = args.gpu
     return args
 
-def remap_bayesian_state_dict(raw_sd, init_sigma=0.1):
+def remap_bayesian_state_dict(raw_sd, init_sigma=0.1, bayes_type=0):
     """
     Turn a vanilla checkpoint into a full Bayesian state dict:
       - fc_*.{weight,bias} → …_mu
@@ -86,7 +86,9 @@ def remap_bayesian_state_dict(raw_sd, init_sigma=0.1):
     base_sd = {}
     for k, v in raw_sd.items():
         prefix = k.split('.')[0]
-        if prefix in ('fc_z','fc_y','fc_t') and k.endswith(('weight','bias')):
+        idx = k.split('.')[1] if '.' in k else None
+        # remap if the configuration says so
+        if prefix in ('fc_z','fc_y','fc_t') and k.endswith(('weight','bias')) and (bayes_type in {0, 4} or (bayes_type == 1 and idx == '0') or (bayes_type == 2 and idx == '4')):
             base_sd[k + '_mu'] = v
         else:
             base_sd[k] = v
@@ -149,7 +151,7 @@ def load_model(args):
             state_dict = remap_dropout_state_dict(raw_sd)
         elif args.modifications == "bayesian":
             raw_sd = torch.load(args.weights_path, map_location='cpu')
-            state_dict = remap_bayesian_state_dict(raw_sd, init_sigma=0.1)
+            state_dict = remap_bayesian_state_dict(raw_sd, init_sigma=0.1, bayes_type=args.bayesian_type)
             missing, unexpected = model.load_state_dict(state_dict, strict=False)
             if missing or unexpected:
                 print("Bayesian load – missing keys:", missing)
