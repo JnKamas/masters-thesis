@@ -19,9 +19,6 @@ class Network(torch.nn.Module):
         else:
             pretrained_backbone_model = torchvision.models.resnet50(pretrained=True)
 
-        if args.modifications == "bayesian" and args.bayesian_type in {3, 4}:
-            # here to replace the resnet with bayesian resnet. to do later
-            pass
 
         last_feat = list(pretrained_backbone_model.children())[-1].in_features // 2
         self.backbone = torch.nn.Sequential(*list(pretrained_backbone_model.children())[:-3])
@@ -57,9 +54,15 @@ class Network(torch.nn.Module):
                     BayesianLinear(64, 3)
                 )
             elif btype == 3:
-                # Only ResNet Bayesian
-                return make_standard_branch()
-            # Complete Bayesian (type 0, 4)
+                # Last MLP layer Bayesian
+                return torch.nn.Sequential(
+                    torch.nn.Linear(last_feat, 128),
+                    torch.nn.LeakyReLU(),
+                    BayesianLinear(128, 64),
+                    torch.nn.LeakyReLU(),
+                    torch.nn.Linear(64, 3)
+                )
+            # Complete Bayesian (type 0)
             return torch.nn.Sequential(
                 BayesianLinear(last_feat, 128),
                 torch.nn.LeakyReLU(),

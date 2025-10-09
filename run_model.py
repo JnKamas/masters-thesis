@@ -19,8 +19,9 @@ def main():
     parser.add_argument('-dpr', '--dropout_prob_rot', type=float, default=0, help='Dropout probability for rotation') # add JK
     parser.add_argument('-dp', '--dropout_prob', type=float, default=0, help='Dropout probability for MC Dropout') # add JK
     parser.add_argument('-sn', '--sample_nbr', type=int, default=0, help='Sample number for MC Dropout')
-    parser.add_argument('-ccw', '--complexity_cost_weight', type=float, default=0.0, help='Weight for complexity cost in Bayesian layers')
-    parser.add_argument('-bt', '--bayesian_type' , type=int, default=0, help='Bayesian type: 0 for full MLP Bayesian, 1 for first MLP layer Bayesian, 2 for last MLP layer Bayesian, 3 for only ResNet bayesian, 4 for complete bayesian')
+    parser.add_argument('-ccw', '--complexity_cost_weight', type=float, default=0.001, help='Weight for complexity cost in Bayesian layers')
+    parser.add_argument('-bt', '--bayesian_type' , type=int, default=0, help='Bayesian type: 0 for full MLP Bayesian, 1 for first MLP layer Bayesian, 2 for last MLP layer Bayesian, 3 for only mid Bayesian, 4 for complete bayesian')
+    parser.add_argument('-is', '--input_sigma', type=float, default=0.1, help='Input sigma for Bayesian layers')
     args = parser.parse_args()
 
     infer_script = os.path.join(script_dir, 'infer.py')
@@ -34,7 +35,7 @@ def main():
     os.makedirs(infer_out, exist_ok=True)
 
     # build & run infer.py
-    infer_cmd = [sys.executable, infer_script, '-bb', args.backbone, '-dpt', str(args.dropout_prob_trans), '-dpr', str(args.dropout_prob_rot), '-b', str(args.batch_size), '-dp', str(args.dropout_prob), '-sn', str(args.sample_nbr), '-ccw', str(args.complexity_cost_weight), '-bt', str(args.bayesian_type)]
+    infer_cmd = [sys.executable, infer_script, '-bb', args.backbone, '-dpt', str(args.dropout_prob_trans), '-dpr', str(args.dropout_prob_rot), '-b', str(args.batch_size), '-dp', str(args.dropout_prob), '-sn', str(args.sample_nbr), '-ccw', str(args.complexity_cost_weight), '-bt', str(args.bayesian_type), '-is', str(args.input_sigma)]
     if args.modifications: infer_cmd += ['-mod', args.modifications]
     infer_cmd += ['--weights_path', weights_path, '--mc_samples', str(args.mc_samples)]
     if args.no_preload: infer_cmd.append('--no_preload')

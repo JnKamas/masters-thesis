@@ -44,7 +44,7 @@ def parse_command_line():
     parser.add_argument('-b', '--batch_size', type=int, default=8, help='batch size')
     parser.add_argument('-r', '--resume', type=int, default=None, help='checkpoint to resume from')
     parser.add_argument('-nw', '--workers', type=int, default=0, help='workers')
-    parser.add_argument('-lr', '--learning_rate', type=float, default=1e-3)
+    parser.add_argument('-lr', '--learning_rate', type=float, default=1e-4)
     parser.add_argument('--no_preload', action='store_true', default=False)
     parser.add_argument('-iw', '--input_width', type=int, default=256, help='size of input')
     parser.add_argument('-ih', '--input_height', type=int, default=256, help='size of input')
@@ -52,7 +52,7 @@ def parse_command_line():
     parser.add_argument('-g', '--gpu', type=str, default='1', help='which gpu to use')
     parser.add_argument('-bb', '--backbone', type=str, default='resnet18', help='which backbone to use: resnet18/34/50')
     parser.add_argument('-de', '--dump_every', type=int, default=0, help='save every n frames during extraction scripts')
-    parser.add_argument('-w', '--weight', type=float, default=1.0, help='weight for translation component')
+    parser.add_argument('-w', '--weight', type=float, default=0.1, help='weight for translation component')
     parser.add_argument('-ns', '--noise_sigma', type=float, default=None)
     parser.add_argument('-ts', '--t_sigma', type=float, default=0.0)
     parser.add_argument('-rr', '--random_rot', action='store_true', default=False)
@@ -64,8 +64,9 @@ def parse_command_line():
     parser.add_argument('-dpr', '--dropout_prob_rot', type=float, default=0, help='Dropout probability for rotation')
     parser.add_argument('-dp', '--dropout_prob', type=float, default=0, help='Dropout probability for MC Dropout')
     parser.add_argument('-sn', '--sample_nbr', type=int, default=3, help='Sample number for MC Dropout')
-    parser.add_argument('-ccw', '--complexity_cost_weight', type=float, default=0.5, help='Weight for complexity cost in Bayesian layers')
-    parser.add_argument('-bt', '--bayesian_type' , type=int, default=0, help='Bayesian type: 0 for full MLP Bayesian, 1 for first MLP layer Bayesian, 2 for last MLP layer Bayesian, 3 for only ResNet bayesian, 4 for complete bayesian')
+    parser.add_argument('-ccw', '--complexity_cost_weight', type=float, default=0.001, help='Weight for complexity cost in Bayesian layers')
+    parser.add_argument('-bt', '--bayesian_type' , type=int, default=0, help='Bayesian type: 0 for full MLP Bayesian, 1 for first MLP layer Bayesian, 2 for last MLP layer Bayesian, 3 for only mid Bayesian, 4 for complete bayesian')
+    parser.add_argument('-is', '--input_sigma', type=float, default=0.1, help='Input sigma for Bayesian layers')
     parser.add_argument('path')
     args = parser.parse_args()
 
@@ -88,7 +89,7 @@ def remap_bayesian_state_dict(raw_sd, init_sigma=0.1, bayes_type=0):
         prefix = k.split('.')[0]
         idx = k.split('.')[1] if '.' in k else None
         # remap if the configuration says so
-        if prefix in ('fc_z','fc_y','fc_t') and k.endswith(('weight','bias')) and (bayes_type in {0, 4} or (bayes_type == 1 and idx == '0') or (bayes_type == 2 and idx == '4')):
+        if prefix in ('fc_z','fc_y','fc_t') and k.endswith(('weight','bias')) and (bayes_type in {0, 4} or (bayes_type == 1 and idx == '0') or (bayes_type == 2 and idx == '4') or (bayes_type == 3 and idx == '2')):
             base_sd[k + '_mu'] = v
         else:
             base_sd[k] = v
@@ -162,7 +163,7 @@ def load_model(args):
 
         # Initialize rho for Bayesian layers so sigma ≈ 0.1
         if args.modifications == "bayesian":
-            init_sigma = 0.1
+            init_sigma = args.input_sigma
             rho0 = math.log(math.exp(init_sigma) - 1.0)
             for name, param in model.named_parameters():
                 if name.endswith("weight_rho") or name.endswith("bias_rho"):

@@ -166,7 +166,7 @@ def train(args):
         with open("loss_log.txt", "a") as f:
             f.write(f"{e+1}\t{loss_running:.6f}\t{np.mean(val_losses):.6f}\n")
 
-    final_model_name = f'models/bayes_type{args.bayesian_type}.pth'
+    final_model_name = f'models/bayes_is{args.input_sigma}.pth'
     torch.save(model.state_dict(), final_model_name)
 
     # toto mi neslo... ale mozno to pojde ked pridam .item() ku train_loss_all akoze kde sa to pridava
