@@ -26,6 +26,7 @@ def main():
 
     infer_script = os.path.join(script_dir, 'infer.py')
     eval_script  = os.path.join(script_dir, 'evaluate.py')
+    icp_script   = os.path.join(script_dir, 'icp_refinement.py')
     weights_path = os.path.join(args.models_dir, args.model_name + '.pth')
     infer_out    = os.path.join(args.inference_dir, args.model_name)
 
@@ -43,6 +44,26 @@ def main():
     print("▶︎ Inference:", ' '.join(infer_cmd))
     if subprocess.run(infer_cmd).returncode != 0:
         sys.exit(1)
+
+
+    # ---- Run ICP refinement before evaluation ----
+    icp_cmd = [
+        sys.executable, icp_script,
+        os.path.join(args.inference_dir, args.model_name),
+        "--voxel", "0.8",       # keep decent geometric detail
+        "--iter", "40",         # allows convergence
+        "--threshold", "15.0",  # allow 1.5 cm matching radius
+        "--dataset_root", "/home/k/kamas7/data/complete"
+    ]
+    # YOU NEED TO READJUST THE DATASET ROOT TO YOUR PATH
+    # from large_data for me does not work, proly because its symbolic link
+
+    print("▶︎ ICP refinement:", ' '.join(icp_cmd))
+    if subprocess.run(icp_cmd).returncode != 0:
+        print("⚠️ ICP refinement failed or skipped.")
+    else:
+        print("✅ ICP refinement completed.")
+
 
     # build & run evaluate.py
     eval_cmd = [sys.executable, eval_script]

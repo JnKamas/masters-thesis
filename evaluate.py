@@ -149,6 +149,8 @@ def evaluate(args):
         gt_R1, gt_t = read_transform_file(os.path.join(path, gt_file))
         if np.linalg.det(gt_R1) < 0:
             gt_R1[:, 1] *= -1
+        if np.linalg.det(pr_R) < 0:
+            pr_R[:, 1] *= -1
         gt_R2 = np.matrix.copy(gt_R1)
         gt_R2[:, :2] *= -1
 
@@ -174,10 +176,10 @@ def evaluate(args):
                       [pr_RICP[1][0], pr_RICP[1][1], pr_RICP[1][2], pr_tICP[1]],
                       [pr_RICP[2][0], pr_RICP[2][1], pr_RICP[2][2], pr_tICP[2]],
                       [0.0, 0.0, 0.0, 1.0]]
-            pr_44F = np.matmul(pr_44I, pr_44R)
-            pr_RICP = pr_44F[:3, :3]
-            pr_tICP = pr_44F[:3, 3]
-            write_refined_file(path, number, pr_44F)
+            # pr_44F = np.matmul(pr_44I, pr_44R)
+            # pr_RICP = pr_44F[:3, :3]
+            # pr_tICP = pr_44F[:3, 3]
+            # write_refined_file(path, number, pr_44F)
 
         if min(calculate_eRE(gt_R1, pr_R), calculate_eRE(gt_R2, pr_R)) > min(calculate_eRE(gt_R1, pr_RICP), calculate_eRE(gt_R2, pr_RICP)) and \
                 calculate_eTE(gt_t, pr_t) > calculate_eTE(gt_t, pr_tICP):
@@ -186,6 +188,8 @@ def evaluate(args):
         else:
             print('WORSE: ' + path + '/' + gt_file)
             counter_worse += 1
+        
+        print(f"GT t: {gt_t}, Pred t: {pr_t}, ICP t: {pr_tICP}")
 
         eRE_list_icp.append(min(calculate_eRE(gt_R1, pr_RICP), calculate_eRE(gt_R2, pr_RICP)))
         eTE_list_icp.append(calculate_eTE(gt_t, pr_tICP))
@@ -255,20 +259,20 @@ def evaluate(args):
 
     # ----------- Classic metrics summary -----------
     print("Evaluated samples: " + str(len(eTE_list)))
-    # print("Better" + str(counter_better))
-    # print("Worse" + str(counter_worse))
+    print("Better" + str(counter_better))
+    print("Worse" + str(counter_worse))
     print(f'MEAN eTE {mean(eTE_list)}, eRE: {mean(eRE_list)}, eGD: {mean(eGD_list)}')
     print(f'STD eTE {np.std(eTE_list)}, eRE: {np.std(eRE_list)}, eGD: {np.std(eGD_list)}')
     print(f'MEDIAN eTE {median(eTE_list)}, eRE: {median(eRE_list)}, eGD: {median(eGD_list)}')
-    # print(f'MIN eTE {min(eTE_list)}, eRE: {min(eRE_list)}, eGD: {min(eGD_list)}')
-    # print(f'MAX eTE {max(eTE_list)}, eRE: {max(eRE_list)}, eGD: {max(eGD_list)}')
+    print(f'MIN eTE {min(eTE_list)}, eRE: {min(eRE_list)}, eGD: {min(eGD_list)}')
+    print(f'MAX eTE {max(eTE_list)}, eRE: {max(eRE_list)}, eGD: {max(eGD_list)}')
 
-    # print('AFTER ICP')
-    # print(f'MEAN eTE {mean(eTE_list_icp)}, eRE: {mean(eRE_list_icp)}, eGD: {mean(eGD_list_icp)}')
-    # print(f'STD eTE {np.std(eTE_list_icp)}, eRE: {np.std(eRE_list_icp)}, eGD: {np.std(eGD_list_icp)}')
-    # print(f'MEDIAN eTE {median(eTE_list_icp)}, eRE: {median(eRE_list_icp)}, eGD: {median(eGD_list_icp)}')
-    # print(f'MIN eTE {min(eTE_list_icp)}, eRE: {min(eRE_list_icp)}, eGD: {min(eGD_list_icp)}')
-    # print(f'MAX eTE {max(eTE_list_icp)}, eRE: {max(eRE_list_icp)}, eGD: {max(eGD_list_icp)}')
+    print('AFTER ICP')
+    print(f'MEAN eTE {mean(eTE_list_icp)}, eRE: {mean(eRE_list_icp)}, eGD: {mean(eGD_list_icp)}')
+    print(f'STD eTE {np.std(eTE_list_icp)}, eRE: {np.std(eRE_list_icp)}, eGD: {np.std(eGD_list_icp)}')
+    print(f'MEDIAN eTE {median(eTE_list_icp)}, eRE: {median(eRE_list_icp)}, eGD: {median(eGD_list_icp)}')
+    print(f'MIN eTE {min(eTE_list_icp)}, eRE: {min(eRE_list_icp)}, eGD: {min(eGD_list_icp)}')
+    print(f'MAX eTE {max(eTE_list_icp)}, eRE: {max(eRE_list_icp)}, eGD: {max(eGD_list_icp)}')
 
     # ----------- Uncertainty summary -----------
     all_preds_t_stack = np.concatenate(all_preds_t, axis=0)
