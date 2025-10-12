@@ -163,37 +163,37 @@ def evaluate(args):
         eGD_list.append(min(calculate_eGD(gt_R1, pr_R), calculate_eGD(gt_R2, pr_R)))
 
         # ---- ICP metrics ----
-        pr_RICP = np.copy(pr_R)
-        pr_tICP = np.copy(pr_t)
-        icp_file = 'icp_scan_' + number + '.txt'
-        if os.path.isfile(os.path.join(path, icp_file)):
-            pr_RICP, pr_tICP = read_icp_file(os.path.join(path, icp_file))
-            pr_44R = [[pr_R[0][0], pr_R[0][1], pr_R[0][2], pr_t[0]],
-                      [pr_R[1][0], pr_R[1][1], pr_R[1][2], pr_t[1]],
-                      [pr_R[2][0], pr_R[2][1], pr_R[2][2], pr_t[2]],
-                      [0.0, 0.0, 0.0, 1.0]]
-            pr_44I = [[pr_RICP[0][0], pr_RICP[0][1], pr_RICP[0][2], pr_tICP[0]],
-                      [pr_RICP[1][0], pr_RICP[1][1], pr_RICP[1][2], pr_tICP[1]],
-                      [pr_RICP[2][0], pr_RICP[2][1], pr_RICP[2][2], pr_tICP[2]],
-                      [0.0, 0.0, 0.0, 1.0]]
-            # pr_44F = np.matmul(pr_44I, pr_44R)
-            # pr_RICP = pr_44F[:3, :3]
-            # pr_tICP = pr_44F[:3, 3]
-            # write_refined_file(path, number, pr_44F)
+        # pr_RICP = np.zeros_like(pr_R)
+        # pr_tICP = np.zeros_like(pr_t)
+        # icp_file = 'icp_scan_' + number + '.txt'
+        # if os.path.isfile(os.path.join(path, icp_file)):
+        #     pr_RICP, pr_tICP = read_icp_file(os.path.join(path, icp_file))
+        #     pr_44R = [[pr_R[0][0], pr_R[0][1], pr_R[0][2], pr_t[0]],
+        #               [pr_R[1][0], pr_R[1][1], pr_R[1][2], pr_t[1]],
+        #               [pr_R[2][0], pr_R[2][1], pr_R[2][2], pr_t[2]],
+        #               [0.0, 0.0, 0.0, 1.0]]
+        #     pr_44I = [[pr_RICP[0][0], pr_RICP[0][1], pr_RICP[0][2], pr_tICP[0]],
+        #               [pr_RICP[1][0], pr_RICP[1][1], pr_RICP[1][2], pr_tICP[1]],
+        #               [pr_RICP[2][0], pr_RICP[2][1], pr_RICP[2][2], pr_tICP[2]],
+        #               [0.0, 0.0, 0.0, 1.0]]
+        #     pr_44F = np.matmul(pr_44I, pr_44R)
+        #     pr_RICP = pr_44F[:3, :3]
+        #     pr_tICP = pr_44F[:3, 3]
+        #     write_refined_file(path, number, pr_44F)
 
-        if min(calculate_eRE(gt_R1, pr_R), calculate_eRE(gt_R2, pr_R)) > min(calculate_eRE(gt_R1, pr_RICP), calculate_eRE(gt_R2, pr_RICP)) and \
-                calculate_eTE(gt_t, pr_t) > calculate_eTE(gt_t, pr_tICP):
-            print('BETTER: ' + path + '/' + gt_file)
-            counter_better += 1
-        else:
-            print('WORSE: ' + path + '/' + gt_file)
-            counter_worse += 1
-        
-        print(f"GT t: {gt_t}, Pred t: {pr_t}, ICP t: {pr_tICP}")
+        # if min(calculate_eRE(gt_R1, pr_R), calculate_eRE(gt_R2, pr_R)) > min(calculate_eRE(gt_R1, pr_RICP), calculate_eRE(gt_R2, pr_RICP)) and \
+        #     calculate_eTE(gt_t, pr_t) > calculate_eTE(gt_t, pr_tICP):
+        #     print('BETTER: ' + path + '/' + gt_file)
+        #     counter_better += 1
+        # else:
+        #     print('WORSE: ' + path + '/' + gt_file)
+        #     counter_worse += 1
 
-        eRE_list_icp.append(min(calculate_eRE(gt_R1, pr_RICP), calculate_eRE(gt_R2, pr_RICP)))
-        eTE_list_icp.append(calculate_eTE(gt_t, pr_tICP))
-        eGD_list_icp.append(min(calculate_eGD(gt_R1, pr_RICP), calculate_eGD(gt_R2, pr_RICP)))
+        # print(f"eTE BEFORE: {calculate_eTE(gt_t, pr_t)} eTE AFTER: {calculate_eTE(gt_t, pr_tICP)}\n GT t: {gt_t}, Pred t: {pr_t}, ICP t: {pr_tICP}")
+
+        # eRE_list_icp.append(min(calculate_eRE(gt_R1, pr_RICP), calculate_eRE(gt_R2, pr_RICP)))
+        # eTE_list_icp.append(calculate_eTE(gt_t, pr_tICP))
+        # eGD_list_icp.append(min(calculate_eGD(gt_R1, pr_RICP), calculate_eGD(gt_R2, pr_RICP)))
 
         all_preds_t.append(pts_arr)
         all_preds_R.append(rots)
@@ -253,26 +253,26 @@ def evaluate(args):
         covered = (min(d1, d2) <= r_alpha)
         credible_region_coverages.append(covered)
 
-        # 2. EAAD
-        eaad_val = eaad(rots, R_bar_so3)
-        eaad_list.append(eaad_val)
+        # # 2. EAAD
+        # eaad_val = eaad(rots, R_bar_so3)
+        # eaad_list.append(eaad_val)
 
     # ----------- Classic metrics summary -----------
     print("Evaluated samples: " + str(len(eTE_list)))
-    print("Better" + str(counter_better))
-    print("Worse" + str(counter_worse))
+    # print("Better" + str(counter_better))
+    # print("Worse" + str(counter_worse))
     print(f'MEAN eTE {mean(eTE_list)}, eRE: {mean(eRE_list)}, eGD: {mean(eGD_list)}')
     print(f'STD eTE {np.std(eTE_list)}, eRE: {np.std(eRE_list)}, eGD: {np.std(eGD_list)}')
     print(f'MEDIAN eTE {median(eTE_list)}, eRE: {median(eRE_list)}, eGD: {median(eGD_list)}')
     print(f'MIN eTE {min(eTE_list)}, eRE: {min(eRE_list)}, eGD: {min(eGD_list)}')
     print(f'MAX eTE {max(eTE_list)}, eRE: {max(eRE_list)}, eGD: {max(eGD_list)}')
 
-    print('AFTER ICP')
-    print(f'MEAN eTE {mean(eTE_list_icp)}, eRE: {mean(eRE_list_icp)}, eGD: {mean(eGD_list_icp)}')
-    print(f'STD eTE {np.std(eTE_list_icp)}, eRE: {np.std(eRE_list_icp)}, eGD: {np.std(eGD_list_icp)}')
-    print(f'MEDIAN eTE {median(eTE_list_icp)}, eRE: {median(eRE_list_icp)}, eGD: {median(eGD_list_icp)}')
-    print(f'MIN eTE {min(eTE_list_icp)}, eRE: {min(eRE_list_icp)}, eGD: {min(eGD_list_icp)}')
-    print(f'MAX eTE {max(eTE_list_icp)}, eRE: {max(eRE_list_icp)}, eGD: {max(eGD_list_icp)}')
+    # print('AFTER ICP')
+    # print(f'MEAN eTE {mean(eTE_list_icp)}, eRE: {mean(eRE_list_icp)}, eGD: {mean(eGD_list_icp)}')
+    # print(f'STD eTE {np.std(eTE_list_icp)}, eRE: {np.std(eRE_list_icp)}, eGD: {np.std(eGD_list_icp)}')
+    # print(f'MEDIAN eTE {median(eTE_list_icp)}, eRE: {median(eRE_list_icp)}, eGD: {median(eGD_list_icp)}')
+    # print(f'MIN eTE {min(eTE_list_icp)}, eRE: {min(eRE_list_icp)}, eGD: {min(eGD_list_icp)}')
+    # print(f'MAX eTE {max(eTE_list_icp)}, eRE: {max(eRE_list_icp)}, eGD: {max(eGD_list_icp)}')
 
     # ----------- Uncertainty summary -----------
     all_preds_t_stack = np.concatenate(all_preds_t, axis=0)
@@ -301,16 +301,16 @@ def evaluate(args):
     print(f" Std Angular Error:  {std_ang_err:.4f} rad / {np.degrees(std_ang_err):.2f}°")
     print()
 
-    print("Rotation Uncertainty Metrics:")
-    print(f" Mean Sample Spread:          {np.mean(spread_list):.4f} rad / {np.degrees(np.mean(spread_list)):.2f}°")
-    print(f" Mean Δ_orth: {np.mean(orth_dev_list):.6f}")
-    print(f" Mean Δ_det:   {np.mean(det_dev_list):.6f}")
+    # print("Rotation Uncertainty Metrics:")
+    # print(f" Mean Sample Spread:          {np.mean(spread_list):.4f} rad / {np.degrees(np.mean(spread_list)):.2f}°")
+    # print(f" Mean Δ_orth: {np.mean(orth_dev_list):.6f}")
+    # print(f" Mean Δ_det:   {np.mean(det_dev_list):.6f}")
 
     # ---- Print new SO(3) metrics ----
     print("\n=== SO(3) Rotational Uncertainty Metrics ===")
     print(f"Mean 95% Credible Region Radius: {np.mean(credible_region_radii):.4f} rad / {np.degrees(np.mean(credible_region_radii)):.2f}°")
     print(f"Mean Empirical Coverage (should be ~0.95): {np.mean(credible_region_coverages):.3f}")
-    print(f"Mean EAAD: {np.mean(eaad_list):.4f} rad / {np.degrees(np.mean(eaad_list)):.2f}°")
+    # print(f"Mean EAAD: {np.mean(eaad_list):.4f} rad / {np.degrees(np.mean(eaad_list)):.2f}°")
     print("\n=== END ===")
 
 if __name__ == '__main__':
