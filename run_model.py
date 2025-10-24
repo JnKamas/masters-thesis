@@ -15,10 +15,11 @@ def main():
     parser.add_argument('--dataset',default=os.path.expanduser('~/thesis/large-data/complete/dataset.json'),help="Path to dataset JSON")
     parser.add_argument('--models_dir',default=os.path.join(proj_root,'models'),help="Directory containing .pth files")
     parser.add_argument('--inference_dir',default=os.path.join(proj_root,'inference'),help="Base output dir")
+    parser.add_argument('--test', type=bool, default=False, help='Test mode (not used currently)') # add JK
     parser.add_argument('-dpt', '--dropout_prob_trans', type=float, default=0, help='Dropout probability for translation') # add JK
     parser.add_argument('-dpr', '--dropout_prob_rot', type=float, default=0, help='Dropout probability for rotation') # add JK
     parser.add_argument('-dp', '--dropout_prob', type=float, default=0, help='Dropout probability for MC Dropout') # add JK
-    parser.add_argument('-sn', '--sample_nbr', type=int, default=0, help='Sample number for MC Dropout')
+    parser.add_argument('-sn', '--sample_nbr', type=int, default=200, help='Sample number for MC Dropout')
     parser.add_argument('-ccw', '--complexity_cost_weight', type=float, default=0.001, help='Weight for complexity cost in Bayesian layers')
     parser.add_argument('-bt', '--bayesian_type' , type=int, default=0, help='Bayesian type: 0 for full MLP Bayesian, 1 for first MLP layer Bayesian, 2 for last MLP layer Bayesian, 3 for only mid Bayesian, 4 for complete bayesian')
     parser.add_argument('-is', '--input_sigma', type=float, default=0.1, help='Input sigma for Bayesian layers')

@@ -26,8 +26,8 @@ def read_transform_file(file):
     with open(file, 'r') as tfile:
         P = tfile.readline().strip().split(' ')
         R = np.array([[float(P[0]), float(P[4]), float(P[8])],
-                      [float(P[1]), float(P[5]), float(P[9])],
-                      [float(P[2]), float(P[6]), float(P[10])]])
+                    [float(P[1]), float(P[5]), float(P[9])],
+                    [float(P[2]), float(P[6]), float(P[10])]])
         t = np.array([float(P[12]), float(P[13]), float(P[14])])
         return R, t
 
@@ -35,17 +35,17 @@ def read_icp_file(file):
     with open(file, 'r') as tfile:
         P = tfile.read().strip().replace('\n', ', ').split(', ')
         R = np.array([[float(P[0]), float(P[4]), float(P[8])],
-                      [float(P[1]), float(P[5]), float(P[9])],
-                      [float(P[2]), float(P[6]), float(P[10])]])
+                    [float(P[1]), float(P[5]), float(P[9])],
+                    [float(P[2]), float(P[6]), float(P[10])]])
         t = np.array([float(P[12]), float(P[13]), float(P[14])])
         return R, t
 
 def write_refined_file(path, number, R44):
     with open(path + '/refined_scan_' + number + '.txt', 'w') as rf:
         print(f'{R44[0][0]} {R44[1][0]} {R44[2][0]} 0.0 '
-              f'{R44[0][1]} {R44[1][1]} {R44[2][1]} 0.0 '
-              f'{R44[0][2]} {R44[1][2]} {R44[2][2]} 0.0 '
-              f'{R44[0][3]} {R44[1][3]} {R44[2][3]} 1.0', file=rf)
+            f'{R44[0][1]} {R44[1][1]} {R44[2][1]} 0.0 '
+            f'{R44[0][2]} {R44[1][2]} {R44[2][2]} 0.0 '
+            f'{R44[0][3]} {R44[1][3]} {R44[2][3]} 1.0', file=rf)
 
 def get_mc_predictions(path, number, mc_samples):
     Rs, ts = [], []
@@ -67,6 +67,150 @@ def mean_rotation_SVD(Rs):
         U[:, -1] *= -1
         R_mean = np.dot(U, Vt)
     return R_mean
+
+def compute_ece_translation(all_preds_t, all_gts_t, n_bins=10):
+    """
+    Computes Expected Calibration Error (ECE) for translation uncertainty.
+    all_preds_t : list of np.arrays, each of shape [K, 3] (MC samples for one item)
+    all_gts_t   : list of np.arrays, each of shape [3] (ground-truth translation)
+    n_bins      : number of bins for uncertainty partitioning
+    """
+    sigma_list = []
+    error_list = []
+
+    for preds_t, gt_t in zip(all_preds_t, all_gts_t):
+        mu = np.mean(preds_t, axis=0)
+        sigma = np.mean(np.std(preds_t, axis=0))  # average std across 3 dims
+        error = np.linalg.norm(mu - gt_t)         # L2 translation error (mm)
+        sigma_list.append(sigma)
+        error_list.append(error)
+
+    sigma_list = np.array(sigma_list)
+    error_list = np.array(error_list)
+
+    # Bin edges between min and max predicted std
+    bin_edges = np.linspace(np.min(sigma_list), np.max(sigma_list), n_bins + 1)
+    ece = 0.0
+    N = len(sigma_list)
+
+    for i in range(n_bins):
+        # indices of samples within this bin
+        mask = (sigma_list >= bin_edges[i]) & (sigma_list < bin_edges[i + 1])
+        n_b = np.sum(mask)
+        if n_b == 0:
+            continue
+
+        mean_sigma = np.mean(sigma_list[mask])
+        mean_error = np.mean(error_list[mask])
+        ece += (n_b / N) * np.abs(mean_error - mean_sigma)
+
+    return ece
+def compute_ece_translation_perdim(all_preds_t, all_gts_t, n_bins=10):
+    """
+    Regression ECE for translation: per-dimension calibration.
+    Binning by σ quantiles. Compares mean |error| to mean σ in each bin.
+    Returns macro-average over x,y,z and also per-dim values.
+    """
+    N = len(all_preds_t)
+    preds_mu = np.stack([p.mean(axis=0) for p in all_preds_t])   # [N,3]
+    preds_std = np.stack([p.std(axis=0)  for p in all_preds_t])  # [N,3]
+    gts = np.stack(all_gts_t)                                    # [N,3]
+    abs_err = np.abs(preds_mu - gts)                             # [N,3]
+
+    ece_dims = []
+    for d in range(3):
+        sigma_d = preds_std[:, d]
+        err_d   = abs_err[:, d]
+
+        # Quantile bins to avoid empty bins
+        q = np.linspace(0, 1, n_bins+1)
+        edges = np.quantile(sigma_d, q)
+        # Ensure strictly increasing (handle ties)
+        edges = np.unique(edges)
+        if len(edges) < 2:
+            # no spread at all => cannot calibrate
+            ece_dims.append(float(np.mean(np.abs(err_d - sigma_d))))
+            continue
+
+        ece_d = 0.0
+        Ntot = len(sigma_d)
+        for i in range(len(edges)-1):
+            lo, hi = edges[i], edges[i+1]
+            # include right edge on last bin
+            if i == len(edges)-2:
+                mask = (sigma_d >= lo) & (sigma_d <= hi)
+            else:
+                mask = (sigma_d >= lo) & (sigma_d <  hi)
+            nb = mask.sum()
+            if nb == 0: 
+                continue
+            ece_d += (nb / Ntot) * abs(err_d[mask].mean() - sigma_d[mask].mean())
+        ece_dims.append(float(ece_d))
+
+    return float(np.mean(ece_dims)), ece_dims  # macro-average, [x,y,z]
+
+def compute_sharpness_translation(all_preds_t):
+    """
+    Computes the average predicted uncertainty magnitude (Sharpness) for translation.
+    all_preds_t: list of np.arrays, each [K, 3] (MC dropout samples for one item)
+    Returns: scalar (mean sharpness in mm), and per-dimension values
+    """
+    # Standard deviation per sample, per axis
+    stds = np.stack([np.std(p, axis=0) for p in all_preds_t])  # [N, 3]
+    # Mean L2-norm of stds (vector sharpness)
+    sharpness_vec = np.mean(np.linalg.norm(stds, axis=1))
+    # Mean per-dimension sharpness (macro-style)
+    sharpness_dims = np.mean(stds, axis=0)
+    return float(sharpness_vec), sharpness_dims
+
+def compute_sharpness_rotation(all_preds_R, all_gts_R):
+    """
+    Computes average predicted rotation uncertainty (radians).
+    all_preds_R: list of np.arrays, each [K, 3x3]
+    all_gts_R: list of 3x3 GT rotations
+    """
+    from scipy.spatial.transform import Rotation as sciR
+    sharp_list = []
+    for Rs, Rgt in zip(all_preds_R, all_gts_R):
+        mean_R = mean_rotation_SVD(Rs)
+        errs = [np.arccos(np.clip((np.trace(Rgt.T @ R) - 1) / 2, -1, 1)) for R in Rs]
+        sharp_list.append(np.std(errs))
+    return float(np.mean(sharp_list))
+    
+def compute_ece_rotation(all_preds_R, all_gts_R, n_bins=10):
+    from scipy.spatial.transform import Rotation as sciR
+    errs, sigmas = [], []
+    for Rs, Rgt in zip(all_preds_R, all_gts_R):
+        mean_R = mean_rotation_SVD(Rs)
+        eR = np.arccos(np.clip((np.trace(Rgt.T @ mean_R) - 1) / 2, -1, 1))
+        errs.append(eR)
+        sample_errs = [np.arccos(np.clip((np.trace(Rgt.T @ R) - 1) / 2, -1, 1)) for R in Rs]
+        sigmas.append(np.std(sample_errs))
+    errs, sigmas = np.array(errs), np.array(sigmas)
+    # binning
+    edges = np.quantile(sigmas, np.linspace(0,1,n_bins+1))
+    edges = np.unique(edges)
+    ece, N = 0, len(sigmas)
+    for i in range(len(edges)-1):
+        lo, hi = edges[i], edges[i+1]
+        mask = (sigmas >= lo) & (sigmas < hi if i < len(edges)-2 else sigmas <= hi)
+        nb = mask.sum()
+        if nb == 0: continue
+        ece += (nb/N) * abs(errs[mask].mean() - sigmas[mask].mean())
+    return float(ece)
+
+def compute_nll_rotation(all_preds_R, all_gts_R):
+    from scipy.spatial.transform import Rotation as sciR
+    nlls = []
+    for Rs, Rgt in zip(all_preds_R, all_gts_R):
+        mean_R = mean_rotation_SVD(Rs)
+        eR_mean = np.arccos(np.clip((np.trace(Rgt.T @ mean_R) - 1) / 2, -1, 1))
+        eR_samples = [np.arccos(np.clip((np.trace(Rgt.T @ R) - 1) / 2, -1, 1)) for R in Rs]
+        mu, sigma = np.mean(eR_samples), np.std(eR_samples) + 1e-8
+        nll = 0.5 * (((eR_mean - mu)**2) / (sigma**2) + np.log(sigma**2) + np.log(2*np.pi))
+        nlls.append(nll)
+    return np.mean(nlls)
+
 
 # ---- SO(3) Metrics Helper Functions ----
 
@@ -100,6 +244,8 @@ def evaluate(args):
     all_preds_t = []
     all_preds_R = []
     all_gts_t = []
+    all_gts_R = []
+
 
     coverage_t = np.zeros(3)
     coverage_pred_t = np.zeros(3)
@@ -198,6 +344,7 @@ def evaluate(args):
         all_preds_t.append(pts_arr)
         all_preds_R.append(rots)
         all_gts_t.append(gt_t)
+        all_gts_R.append(gt_R1)  # account for 180° symmetry later
 
         for j in range(3):
             lo = np.percentile(pts_arr[:, j], 2.5)
@@ -234,10 +381,10 @@ def evaluate(args):
             spread_list.append(0.0)
 
         R_bar = np.mean(rots, axis=0)
-        orth_dev = np.linalg.norm(R_bar.T @ R_bar - np.eye(3), ord='fro')
-        det_dev = abs(np.linalg.det(R_bar) - 1.0)
-        orth_dev_list.append(orth_dev)
-        det_dev_list.append(det_dev)
+        # orth_dev = np.linalg.norm(R_bar.T @ R_bar - np.eye(3), ord='fro')
+        # det_dev = abs(np.linalg.det(R_bar) - 1.0)
+        # orth_dev_list.append(orth_dev)
+        # det_dev_list.append(det_dev)
 
         # ---- NEW METRICS ----
         # Compute mean rotation
@@ -256,6 +403,18 @@ def evaluate(args):
         # # 2. EAAD
         # eaad_val = eaad(rots, R_bar_so3)
         # eaad_list.append(eaad_val)
+
+        # 3. Negative Log Likelihood (NLL) 
+        eps = 1e-8
+        nll_values = []
+        for preds_t, gt_t in zip(all_preds_t, all_gts_t):
+            mu = np.mean(preds_t, axis=0)
+            var = np.var(preds_t, axis=0) + eps  # avoid log(0)
+            # per-dimension Gaussian NLL
+            nll = 0.5 * (np.log(var) + ((gt_t - mu) ** 2) / var)
+            nll_values.append(np.mean(nll))      # average over x,y,z
+        mean_nll = float(np.mean(nll_values))
+        std_nll  = float(np.std(nll_values))
 
     # ----------- Classic metrics summary -----------
     print("Evaluated samples: " + str(len(eTE_list)))
@@ -285,14 +444,29 @@ def evaluate(args):
     avg_var_t = np.mean(std_preds_per_sample, axis=0)
     avg_mean_t = np.mean(mean_preds_per_sample, axis=0)
 
-    print("\n=== Uncertainty Summary ===")
+    print("\n=== Translation Uncertainty Summary ===")
     print("Translation Uncertainty:")
     for j in range(3):
         print(f" t[{j}]: {avg_mean_t[j]:.4f} ± {avg_var_t[j]:.4f}")
-    print(" Coverage (GT/Pred):")
+    print("Coverage (GT/Pred):")
     for j in range(3):
-        print(f"  t[{j}]: {coverage_t[j] / n_samples:.4f} / {coverage_pred_t[j] / n_samples:.4f}")
+        print(f" t[{j}]: {coverage_t[j] / n_samples:.4f} / {coverage_pred_t[j] / n_samples:.4f}")
     print()
+
+    print("Negative Log Likelihood Score (NLL) Lower is better")
+    print(f" Translation NLL: {mean_nll:.4f} ± {std_nll:.4f}")
+
+    print("Expected Calibration Error (ECE) Lower is better")
+    ece = compute_ece_translation(all_preds_t, all_gts_t, n_bins=10)
+    print(f" Translation ECE: {ece:.4f}")
+    ece_macro, ece_xyz = compute_ece_translation_perdim(all_preds_t, all_gts_t, n_bins=10)
+    print(f" Translation ECE (macro): {ece_macro:.4f}  | per-dim: x={ece_xyz[0]:.4f}, y={ece_xyz[1]:.4f}, z={ece_xyz[2]:.4f}")
+    print(f" Average |error|: {avg_loss:.4f}")
+    print("Sparpness: (lower is better)")
+    sharp_vec, sharp_dims = compute_sharpness_translation(all_preds_t)
+    print(f" Translation Sharpness: {sharp_vec:.4f} mm | per-axis: x={sharp_dims[0]:.4f}, y={sharp_dims[1]:.4f}, z={sharp_dims[2]:.4f}")
+
+    print("\n=== Rotation Uncertainty Summary ===")
 
     print("Rotation Error Summary:")
     mean_ang_err = np.mean(rotation_errors)
@@ -301,16 +475,30 @@ def evaluate(args):
     print(f" Std Angular Error:  {std_ang_err:.4f} rad / {np.degrees(std_ang_err):.2f}°")
     print()
 
+
+    nll_R = compute_nll_rotation(all_preds_R, all_gts_R)
+    ece_R = compute_ece_rotation(all_preds_R, all_gts_R)
+    sharp_R = compute_sharpness_rotation(all_preds_R, all_gts_R)
+
+    print(f"Rotation NLL: {nll_R:.4f}")
+    print(f"Rotation ECE: {ece_R:.4f} rad / {np.degrees(ece_R):.2f}°")
+    print(f"Rotation Sharpness: {sharp_R:.4f} rad / {np.degrees(sharp_R):.2f}°")
+
+
     # print("Rotation Uncertainty Metrics:")
     # print(f" Mean Sample Spread:          {np.mean(spread_list):.4f} rad / {np.degrees(np.mean(spread_list)):.2f}°")
     # print(f" Mean Δ_orth: {np.mean(orth_dev_list):.6f}")
     # print(f" Mean Δ_det:   {np.mean(det_dev_list):.6f}")
+    # print()
 
     # ---- Print new SO(3) metrics ----
-    print("\n=== SO(3) Rotational Uncertainty Metrics ===")
-    print(f"Mean 95% Credible Region Radius: {np.mean(credible_region_radii):.4f} rad / {np.degrees(np.mean(credible_region_radii)):.2f}°")
-    print(f"Mean Empirical Coverage (should be ~0.95): {np.mean(credible_region_coverages):.3f}")
+    print("SO(3) Rotational Uncertainty Metrics:")
+    print(f" Mean 95% Credible Region Radius: {np.mean(credible_region_radii):.4f} rad / {np.degrees(np.mean(credible_region_radii)):.2f}°")
+    print(f" Mean Empirical Coverage (should be ~0.95): {np.mean(credible_region_coverages):.3f}")
     # print(f"Mean EAAD: {np.mean(eaad_list):.4f} rad / {np.degrees(np.mean(eaad_list)):.2f}°")
+
+
+
     print("\n=== END ===")
 
 if __name__ == '__main__':
