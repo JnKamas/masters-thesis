@@ -46,24 +46,24 @@ def main():
     if subprocess.run(infer_cmd).returncode != 0:
         sys.exit(1)
 
-    if False: # did not manage to work for me.
-        # ---- Run ICP refinement before evaluation ----
-        icp_cmd = [
-            sys.executable, icp_script,
-            os.path.join(args.inference_dir, args.model_name),
-            "--voxel", "0.1",       # keep decent geometric detail
-            "--iter", "100",         # allows convergence
-            "--threshold", "3",  
-            "--dataset_root", "/home/k/kamas7/data/complete"
-        ]
-        # YOU NEED TO READJUST THE DATASET ROOT TO YOUR PATH
-        # from large_data for me does not work, proly because its symbolic link
+    # #ICP did not manage to work for me.
+    #     # ---- Run ICP refinement before evaluation ----
+    #     icp_cmd = [
+    #         sys.executable, icp_script,
+    #         os.path.join(args.inference_dir, args.model_name),
+    #         "--voxel", "0.1",       # keep decent geometric detail
+    #         "--iter", "100",         # allows convergence
+    #         "--threshold", "3",  
+    #         "--dataset_root", "/home/k/kamas7/data/complete"
+    #     ]
+    #     # YOU NEED TO READJUST THE DATASET ROOT TO YOUR PATH
+    #     # from large_data for me does not work, proly because its symbolic link
 
-        print("▶︎ ICP refinement:", ' '.join(icp_cmd))
-        if subprocess.run(icp_cmd).returncode != 0:
-            print("⚠️ ICP refinement failed or skipped.")
-        else:
-            print("✅ ICP refinement completed.")
+    #     print("▶︎ ICP refinement:", ' '.join(icp_cmd))
+    #     if subprocess.run(icp_cmd).returncode != 0:
+    #         print("⚠️ ICP refinement failed or skipped.")
+    #     else:
+    #         print("✅ ICP refinement completed.")
 
 
     # build & run evaluate.py

@@ -48,7 +48,7 @@ class Dataset(Dataset):
         with open(path, 'r') as f:
             self.entries = json.load(f)
 
-        if 'train' not in path and 'val' not in path:
+        if 'train' not in path and 'val' not in path and 'test' not in path:
             if self.split == 'train':
                 self.entries = [entry for i, entry in enumerate(self.entries) if i % 5 != 0]
             elif self.split == 'val':

@@ -227,6 +227,107 @@ def eaad(Rs, R_bar):
     deviations = np.array([geodesic_distance(R_bar, R) for R in Rs])
     return deviations.mean()
 
+# ======== UCS: Reliability + Score (Wursthorn et al., 2024) ========
+
+def _pit_from_gaussian_1d(y, mu, sigma, eps=1e-9):
+    """Probability integral transform (PIT) for 1D Gaussian:
+       u = Phi((y - mu) / sigma). Returns scalar in (0,1)."""
+    from math import erf, sqrt
+    z = (y - mu) / max(sigma, eps)
+    # standard normal CDF via erf
+    u = 0.5 * (1.0 + erf(z / sqrt(2.0)))
+    # numerical safety
+    return float(np.clip(u, 1e-9, 1.0 - 1e-9))
+
+def _reliability_and_ucs_from_pit(pit_values, p_grid=None):
+    """
+    Build reliability curve and UCS from a list/array of PIT values (u in (0,1)).
+    UCS = 1 - (area_between_curves / 0.25), with area via trapezoid on |p_hat - p|.
+    """
+    if p_grid is None:
+        p_grid = np.linspace(0.1, 1.0, 10)  # Δp = 0.1 as in the paper
+    pit_values = np.asarray(pit_values, dtype=float)
+    T = len(pit_values)
+    if T == 0:
+        return p_grid, np.zeros_like(p_grid), 0.0
+
+    p_hat = []
+    for p in p_grid:
+        p_hat.append(float(np.mean(pit_values <= p)))
+    p_hat = np.array(p_hat)
+
+    # Area between observed and diagonal: A = ∫ |p_hat - p| dp  (approx)
+    A = np.trapz(np.abs(p_hat - p_grid), p_grid)
+    UCS = 1.0 - (A / 0.25)
+    UCS = float(np.clip(UCS, 0.0, 1.0))
+    return p_grid, p_hat, UCS
+
+def compute_ucs_translation(all_preds_t, all_gts_t, p_grid=None):
+    """
+    UCS for translation, per-dimension (x,y,z) and macro-average.
+    For each sample and each dim: build PIT using Gaussian(mu, sigma) vs GT dim.
+    Returns: macro_ucs, [ucs_x, ucs_y, ucs_z]
+    """
+    # Collect PITs per dimension
+    pits = [[], [], []]  # x,y,z
+
+    for preds_t, gt_t in zip(all_preds_t, all_gts_t):
+        mu = preds_t.mean(axis=0)          # [3]
+        std = preds_t.std(axis=0) + 1e-9   # [3]
+        for d in range(3):
+            u = _pit_from_gaussian_1d(gt_t[d], mu[d], std[d])
+            pits[d].append(u)
+
+    ucs_dims = []
+    for d in range(3):
+        _, _, ucs_d = _reliability_and_ucs_from_pit(pits[d], p_grid=p_grid)
+        ucs_dims.append(ucs_d)
+
+    return float(np.mean(ucs_dims)), ucs_dims
+
+def _best_symmetry_gt_for_rotation(R_mean, gt_R1, gt_R2):
+    """Choose GT orientation (to handle 180° symmetry) that is closer to mean."""
+    d1 = geodesic_distance(R_mean, gt_R1)
+    d2 = geodesic_distance(R_mean, gt_R2)
+    return gt_R1 if d1 <= d2 else gt_R2
+
+def compute_ucs_rotation_rodrigues(all_preds_R, all_gts_R, p_grid=None):
+    """
+    UCS for rotation using Rodrigues (axis-angle) 3D representation, per-dimension and macro.
+    For each sample:
+      1) Choose the GT (gt_R1 or gt_R2) closer to mean to handle the 180° symmetry.
+      2) Convert MC samples to rotvecs (Rodrigues).
+      3) Compute Gaussian(mu, sigma) per component vs GT rotvec component -> PITs.
+    Returns: macro_ucs, [ucs_rx, ucs_ry, ucs_rz]
+    """
+    pits = [[], [], []]  # rx, ry, rz
+
+    for Rs, gt_R1 in zip(all_preds_R, all_gts_R):
+        R_mean = mean_rotation_SVD(Rs)
+        # second symmetry for 180° around principal axis (your earlier convention)
+        gt_R2 = np.matrix.copy(gt_R1)
+        gt_R2[:, :2] *= -1
+        gt_R = _best_symmetry_gt_for_rotation(R_mean, gt_R1, gt_R2)
+
+        # rotvecs
+        rotvecs = sciR.from_matrix(Rs).as_rotvec()  # [K,3]
+        mu = rotvecs.mean(axis=0)
+        std = rotvecs.std(axis=0) + 1e-9
+
+        gt_vec = sciR.from_matrix(gt_R).as_rotvec()  # [3]
+
+        for d in range(3):
+            u = _pit_from_gaussian_1d(gt_vec[d], mu[d], std[d])
+            pits[d].append(u)
+
+    ucs_dims = []
+    for d in range(3):
+        _, _, ucs_d = _reliability_and_ucs_from_pit(pits[d], p_grid=p_grid)
+        ucs_dims.append(ucs_d)
+
+    return float(np.mean(ucs_dims)), ucs_dims
+
+
 def evaluate(args):
     gt_files = glob.iglob(args.path + '/**/*.txt', recursive=True)
     good_gt_files = [f for f in gt_files if not any(sub in f for sub in ['bad', 'catas', 'ish', 'pred', 'icp', 'refined']) and any(sub in f for sub in ['scan_', 'gt_'])]
@@ -308,38 +409,6 @@ def evaluate(args):
             eRE_list.append(min(calculate_eRE(gt_R1, pr_R), calculate_eRE(gt_R2, pr_R)))
         eGD_list.append(min(calculate_eGD(gt_R1, pr_R), calculate_eGD(gt_R2, pr_R)))
 
-        # ---- ICP metrics ----
-        # pr_RICP = np.zeros_like(pr_R)
-        # pr_tICP = np.zeros_like(pr_t)
-        # icp_file = 'icp_scan_' + number + '.txt'
-        # if os.path.isfile(os.path.join(path, icp_file)):
-        #     pr_RICP, pr_tICP = read_icp_file(os.path.join(path, icp_file))
-        #     pr_44R = [[pr_R[0][0], pr_R[0][1], pr_R[0][2], pr_t[0]],
-        #               [pr_R[1][0], pr_R[1][1], pr_R[1][2], pr_t[1]],
-        #               [pr_R[2][0], pr_R[2][1], pr_R[2][2], pr_t[2]],
-        #               [0.0, 0.0, 0.0, 1.0]]
-        #     pr_44I = [[pr_RICP[0][0], pr_RICP[0][1], pr_RICP[0][2], pr_tICP[0]],
-        #               [pr_RICP[1][0], pr_RICP[1][1], pr_RICP[1][2], pr_tICP[1]],
-        #               [pr_RICP[2][0], pr_RICP[2][1], pr_RICP[2][2], pr_tICP[2]],
-        #               [0.0, 0.0, 0.0, 1.0]]
-        #     pr_44F = np.matmul(pr_44I, pr_44R)
-        #     pr_RICP = pr_44F[:3, :3]
-        #     pr_tICP = pr_44F[:3, 3]
-        #     write_refined_file(path, number, pr_44F)
-
-        # if min(calculate_eRE(gt_R1, pr_R), calculate_eRE(gt_R2, pr_R)) > min(calculate_eRE(gt_R1, pr_RICP), calculate_eRE(gt_R2, pr_RICP)) and \
-        #     calculate_eTE(gt_t, pr_t) > calculate_eTE(gt_t, pr_tICP):
-        #     print('BETTER: ' + path + '/' + gt_file)
-        #     counter_better += 1
-        # else:
-        #     print('WORSE: ' + path + '/' + gt_file)
-        #     counter_worse += 1
-
-        # print(f"eTE BEFORE: {calculate_eTE(gt_t, pr_t)} eTE AFTER: {calculate_eTE(gt_t, pr_tICP)}\n GT t: {gt_t}, Pred t: {pr_t}, ICP t: {pr_tICP}")
-
-        # eRE_list_icp.append(min(calculate_eRE(gt_R1, pr_RICP), calculate_eRE(gt_R2, pr_RICP)))
-        # eTE_list_icp.append(calculate_eTE(gt_t, pr_tICP))
-        # eGD_list_icp.append(min(calculate_eGD(gt_R1, pr_RICP), calculate_eGD(gt_R2, pr_RICP)))
 
         all_preds_t.append(pts_arr)
         all_preds_R.append(rots)
@@ -426,13 +495,6 @@ def evaluate(args):
     print(f'MIN eTE {min(eTE_list)}, eRE: {min(eRE_list)}, eGD: {min(eGD_list)}')
     print(f'MAX eTE {max(eTE_list)}, eRE: {max(eRE_list)}, eGD: {max(eGD_list)}')
 
-    # print('AFTER ICP')
-    # print(f'MEAN eTE {mean(eTE_list_icp)}, eRE: {mean(eRE_list_icp)}, eGD: {mean(eGD_list_icp)}')
-    # print(f'STD eTE {np.std(eTE_list_icp)}, eRE: {np.std(eRE_list_icp)}, eGD: {np.std(eGD_list_icp)}')
-    # print(f'MEDIAN eTE {median(eTE_list_icp)}, eRE: {median(eRE_list_icp)}, eGD: {median(eGD_list_icp)}')
-    # print(f'MIN eTE {min(eTE_list_icp)}, eRE: {min(eRE_list_icp)}, eGD: {min(eGD_list_icp)}')
-    # print(f'MAX eTE {max(eTE_list_icp)}, eRE: {max(eRE_list_icp)}, eGD: {max(eGD_list_icp)}')
-
     # ----------- Uncertainty summary -----------
     all_preds_t_stack = np.concatenate(all_preds_t, axis=0)
     all_gts_t_stack = np.stack(all_gts_t)
@@ -497,6 +559,14 @@ def evaluate(args):
     print(f" Mean Empirical Coverage (should be ~0.95): {np.mean(credible_region_coverages):.3f}")
     # print(f"Mean EAAD: {np.mean(eaad_list):.4f} rad / {np.degrees(np.mean(eaad_list)):.2f}°")
 
+    # --- UCS for Translation ---
+    ucs_t_macro, ucs_t_dims = compute_ucs_translation(all_preds_t, all_gts_t, p_grid=np.linspace(0.1,1.0,10))
+    print("\nUCS (Translation) 0..1 ↑ (higher is better)")
+    print(f" Translation UCS (macro): {ucs_t_macro:.3f} | per-axis: x={ucs_t_dims[0]:.3f}, y={ucs_t_dims[1]:.3f}, z={ucs_t_dims[2]:.3f}")
+    # --- UCS for Rotation (Rodrigues per-dimension) ---
+    ucs_r_macro, ucs_r_dims = compute_ucs_rotation_rodrigues(all_preds_R, all_gts_R, p_grid=np.linspace(0.1,1.0,10))
+    print("\nUCS (Rotation, Rodrigues components) 0..1 ↑")
+    print(f" Rotation UCS (macro):  {ucs_r_macro:.3f} | rx={ucs_r_dims[0]:.3f}, ry={ucs_r_dims[1]:.3f}, rz={ucs_r_dims[2]:.3f}")
 
 
     print("\n=== END ===")
