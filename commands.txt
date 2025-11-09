@@ -1,2 +1,0 @@
-python masters-thesis/train.py -bb resnet34 -iw 516 -ih 386 -b 12 -e 20 -de 10 -lr 1e-4 -w 0.1 -ccw 1e-3 -bt 3 -mod bayesian -wp models/quartres_resnet34_synth.pth large-data/complete/dataset.json
-python ~/thesis/masters-thesis/run_model.py -mod bayesian -mc 500 -bt 3 bayes_type3
