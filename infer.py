@@ -9,6 +9,7 @@ from scipy.spatial.transform.rotation import Rotation
 from torch.utils.data import DataLoader
 from shutil import copyfile
 import matplotlib.pyplot as plt
+from tqdm.auto import tqdm
 
 def enable_dropout(model):
     for module in model.modules():
@@ -56,7 +57,22 @@ def infer(args, export_to_folder=True):
         if args.modifications == "mc_dropout":
             enable_dropout(model)
 
-        for sample in val_loader:
+        PRINT_PREDS = False   # <-- set True if you want to print GT + predictions
+
+        progress = tqdm(
+            val_loader,
+            desc="Running Inference",
+            ncols=80,
+            dynamic_ncols=True,
+            ascii=False,
+            bar_format=(
+                "{l_bar}{bar} {n_fmt}/{total_fmt} "
+                "[{elapsed}<{remaining}, {rate_fmt}]"
+            )
+        )
+
+        for sample in progress:
+
             # Monte Carlo / Bayesian branch
             if args.modifications in {"mc_dropout", "bayesian"}:
                 for mc_idx in range(args.mc_samples):
@@ -101,12 +117,7 @@ def infer(args, export_to_folder=True):
             gt_transforms = sample['orig_transform']
 
             for i in range(len(pred_zs)):
-                # print GT vs pred
-                print("*"*20)
-                print("GT:")
-                gt = gt_transforms[i].cpu().numpy()
-                print("Det:", np.linalg.det(gt))
-                print(gt)
+                
 
                 z = pred_zs[i];   z /= np.linalg.norm(z)
                 y = pred_ys[i]
@@ -121,9 +132,17 @@ def infer(args, export_to_folder=True):
                 transform[:3,3] = pred_ts[i]
                 transform[3,3]  = 1.0
 
-                print("Predict:")
-                print("Det:", np.linalg.det(transform))
-                print(transform)
+                # print GT vs pred
+                if PRINT_PREDS:
+                    print("*"*20)
+                    print("GT:")
+                    gt = gt_transforms[i].cpu().numpy()
+                    print("Det:", np.linalg.det(gt))
+                    print(gt)
+
+                    print("Predict:")
+                    print("Det:", np.linalg.det(transform))
+                    print(transform)
 
                 txt_path = sample['txt_path'][i].replace("\\","/")
                 txt_name = f'prediction_{os.path.basename(txt_path)}'
