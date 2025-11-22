@@ -5,7 +5,6 @@ import numpy as np
 from statistics import mean, median
 from scipy.linalg import logm, svd
 from scipy.spatial.transform import Rotation as sciR
-import warnings
 
 def calculate_eTE(gt_t, pr_t):
     return np.linalg.norm((pr_t - gt_t), ord=2) / 10
