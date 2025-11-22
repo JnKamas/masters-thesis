@@ -7,8 +7,8 @@ import numpy as np
 import torch
 from torch.utils.data import DataLoader, Dataset
 from matplotlib import pyplot as plt
-from scipy.spatial.transform import Rotation
-
+from scipy.spatial.transform import Rotation    
+from tqdm import tqdm
 
 def get_canonical_transform(transform):
     """
@@ -57,9 +57,8 @@ class Dataset(Dataset):
         print("Split: ", self.split)
         print("Size: ", len(self))
         if self.preload:
-            print("Preloading exrs to memory")
-            for entry in self.entries:
-                print(entry)
+            print("Preloading EXR pointclouds into RAM...")
+            for entry in tqdm(self.entries, desc="Loading EXRs", ncols=80, ascii=False, leave=False, dynamic_ncols=True):
                 entry['xyz'] = self.load_xyz(entry)
 
     def __len__(self):
