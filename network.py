@@ -48,13 +48,23 @@ class Network(nn.Module):
         else:
             backbone = resnet50(weights=ResNet50_Weights.DEFAULT)
 
-        backbone = insert_block_dropout(backbone, self.p_backbone)
+        if args.modifications == "mc_dropout":
+            backbone = insert_block_dropout(backbone, self.p_backbone)
 
         self.backbone = nn.Sequential(*list(backbone.children())[:-3])
         last_feat = list(backbone.children())[-1].in_features // 2
 
         # Heads 
         def make_head(p):
+            return nn.Sequential(
+                nn.Linear(last_feat, 128),
+                nn.LeakyReLU(),
+                nn.Linear(128, 64),
+                nn.LeakyReLU(),
+                nn.Linear(64, 3),
+            )
+
+        def make_dropout_head(p):
             return nn.Sequential(
                 nn.Linear(last_feat, 128),
                 nn.LeakyReLU(),
@@ -99,9 +109,9 @@ class Network(nn.Module):
             )
 
         if args.modifications == "mc_dropout":
-            self.fc_z = make_head(self.p_rot)
-            self.fc_y = make_head(self.p_rot)
-            self.fc_t = make_head(self.p_trans)
+            self.fc_z = make_dropout_head(self.p_rot)
+            self.fc_y = make_dropout_head(self.p_rot)
+            self.fc_t = make_dropout_head(self.p_trans)
         elif args.modifications == "bayesian":
             self.fc_z = make_bayesian_head(args.bayesian_type)
             self.fc_y = make_bayesian_head(args.bayesian_type)
