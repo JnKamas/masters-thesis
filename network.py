@@ -1,88 +1,102 @@
 import torch
-import torchvision
-from torchvision.models import resnet34, ResNet34_Weights
-from torchvision.models import resnet18, ResNet18_Weights
-from torchvision.models import resnet50, ResNet50_Weights
+import torch.nn as nn
+from torchvision.models import (
+    resnet18, ResNet18_Weights,
+    resnet34, ResNet34_Weights,
+    resnet50, ResNet50_Weights
+)
 from blitz.modules import BayesianLinear
 from blitz.utils import variational_estimator
 
 
-@variational_estimator
-class Network(torch.nn.Module):
-    def __init__(self, args):
-        super(Network, self).__init__()
+# ------------------------------------------------------------
+# Add dropout after every ResNet block WITHOUT changing structure
+# ------------------------------------------------------------
+def insert_block_dropout(backbone, p):
+    """
+    Inserts nn.Dropout(p) after each residual block
+    in layer1, layer2, layer3, layer4.
+    Matches your requirement 1.
+    """
+    for layer_name in ["layer1", "layer2", "layer3", "layer4"]:
+        layer = getattr(backbone, layer_name)
+        new_seq = []
+        for block in layer:
+            new_seq.append(block)
+            new_seq.append(nn.Dropout(p))
+        setattr(backbone, layer_name, nn.Sequential(*new_seq))
+    return backbone
 
-        # ------------------------------
+
+@variational_estimator
+class Network(nn.Module):
+    def __init__(self, args):
+        super().__init__()
+
         # Dropout probabilities
-        # ------------------------------
         self.p_backbone = getattr(args, "dropout_prob_backbone", args.dropout_prob)
         self.p_rot = getattr(args, "dropout_prob_rot", args.dropout_prob)
         self.p_trans = getattr(args, "dropout_prob_trans", args.dropout_prob)
-        
-        # ------------------------------
-        # Backbone (ResNet variants)
-        # ------------------------------
+
+        # ------------------------------------------------------------
+        # Load ResNet exactly as paper (Figure 3)
+        # ------------------------------------------------------------
         if args.backbone == 'resnet18':
             backbone = resnet18(weights=ResNet18_Weights.DEFAULT)
         elif args.backbone == 'resnet34':
             backbone = resnet34(weights=ResNet34_Weights.DEFAULT)
         else:
             backbone = resnet50(weights=ResNet50_Weights.DEFAULT)
-        self.backbone = torch.nn.Sequential(*list(backbone.children())[:-3])
+
+        backbone = insert_block_dropout(backbone, self.p_backbone)
+
+        self.backbone = nn.Sequential(*list(backbone.children())[:-3])
         last_feat = list(backbone.children())[-1].in_features // 2
 
-        # -----------------------------
-        # Heads
-        # -----------------------------
-        def make_head(p_dropout):
-            return torch.nn.Sequential(
-                torch.nn.Linear(last_feat, 128),
-                torch.nn.LeakyReLU(),
-                torch.nn.Dropout(p_dropout),
-                torch.nn.Linear(128, 64),
-                torch.nn.LeakyReLU(),
-                torch.nn.Dropout(p_dropout),
-                torch.nn.Linear(64, 3),
+        # Heads 
+        def make_head(p):
+            return nn.Sequential(
+                nn.Linear(last_feat, 128),
+                nn.LeakyReLU(),
+                nn.Dropout(p),
+                nn.Linear(128, 64),
+                nn.LeakyReLU(),
+                nn.Dropout(p),
+                nn.Linear(64, 3),
             )
 
-        def make_bayesian_head(btype: int) -> torch.nn.Sequential:
+        def make_bayesian_head(btype):
             if btype == 1:
-                # First MLP layer Bayesian
-                return torch.nn.Sequential(
+                return nn.Sequential(
                     BayesianLinear(last_feat, 128),
-                    torch.nn.LeakyReLU(),
-                    torch.nn.Linear(128, 64),
-                    torch.nn.LeakyReLU(),
-                    torch.nn.Linear(64, 3),
+                    nn.LeakyReLU(),
+                    nn.Linear(128, 64),
+                    nn.LeakyReLU(),
+                    nn.Linear(64, 3),
                 )
-            elif btype == 2:
-                # Last MLP layer Bayesian
-                return torch.nn.Sequential(
-                    torch.nn.Linear(last_feat, 128),
-                    torch.nn.LeakyReLU(),
-                    torch.nn.Linear(128, 64),
-                    torch.nn.LeakyReLU(),
+            if btype == 2:
+                return nn.Sequential(
+                    nn.Linear(last_feat, 128),
+                    nn.LeakyReLU(),
+                    nn.Linear(128, 64),
+                    nn.LeakyReLU(),
                     BayesianLinear(64, 3),
                 )
-            elif btype == 3:
-                # Middle MLP layer Bayesian
-                return torch.nn.Sequential(
-                    torch.nn.Linear(last_feat, 128),
-                    torch.nn.LeakyReLU(),
+            if btype == 3:
+                return nn.Sequential(
+                    nn.Linear(last_feat, 128),
+                    nn.LeakyReLU(),
                     BayesianLinear(128, 64),
-                    torch.nn.LeakyReLU(),
-                    torch.nn.Linear(64, 3),
+                    nn.LeakyReLU(),
+                    nn.Linear(64, 3),
                 )
-
-            # Full Bayesian (type 0)
-            return torch.nn.Sequential(
+            return nn.Sequential(
                 BayesianLinear(last_feat, 128),
-                torch.nn.LeakyReLU(),
+                nn.LeakyReLU(),
                 BayesianLinear(128, 64),
-                torch.nn.LeakyReLU(),
+                nn.LeakyReLU(),
                 BayesianLinear(64, 3),
             )
-
 
         if args.modifications == "mc_dropout":
             self.fc_z = make_head(self.p_rot)
@@ -97,24 +111,15 @@ class Network(torch.nn.Module):
             self.fc_y = make_head(0.0)
             self.fc_t = make_head(0.0)
 
-        self.backbone_dropout = torch.nn.Dropout(self.p_backbone)
-
-    # -----------------------------------------------------------
+    # ------------------------------------------------------------
     # Forward
-    # -----------------------------------------------------------
+    # ------------------------------------------------------------
     def forward(self, x):
-
-        # 1) Backbone
         x = self.backbone(x)
 
-        # 2) nn.Dropout after backbone features
-        x = self.backbone_dropout(x)
+        x = torch.mean(x, dim=-1)  # mean over width
+        x = torch.mean(x, dim=-1)  # mean over height
 
-        # 3) Global average pooling (paper)
-        x = torch.mean(x, dim=-1)
-        x = torch.mean(x, dim=-1)
-
-        # 4) Heads
         z = self.fc_z(x)
         y = self.fc_y(x)
         t = self.fc_t(x)

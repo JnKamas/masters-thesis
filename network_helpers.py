@@ -103,18 +103,41 @@ def remap_bayesian_state_dict(raw_sd, init_sigma=0.1, bayes_type=0):
 
 
 def remap_dropout_state_dict(base_sd):
-    """Remap old baseline checkpoint to new mc_dropout layer indices."""
+    """
+    Remap old baseline checkpoint to new mc_dropout backbone structure.
+    - fc_z / fc_y / fc_t: keeps your original mapping rules
+    - backbone layer blocks: block i → new index (2 * i)
+    """
     new_sd = {}
+
     for k, v in base_sd.items():
         parts = k.split('.')
-        name, idx = parts[0], int(parts[1])
-        if name in ('fc_z', 'fc_y', 'fc_t') and idx in (2, 4):
-            new_idx = {2: 3, 4: 6}[idx]
-            parts[1] = str(new_idx)
-            new_k = '.'.join(parts)
-        else:
-            new_k = k
-        new_sd[new_k] = v
+
+        # 1) HEAD REMAPPING
+        if parts[0] in ('fc_z', 'fc_y', 'fc_t') and parts[1].isdigit():
+            idx = int(parts[1])
+            if idx in (2, 4):
+                # old mapping
+                new_idx = {2: 3, 4: 6}[idx]
+                parts[1] = str(new_idx)
+                new_sd['.'.join(parts)] = v
+                continue
+
+        # 2) BACKBONE REMAPPING
+        if parts[0] == 'backbone' and parts[1].isdigit() and parts[2].isdigit():
+            layer_idx = int(parts[1])
+            block_idx = int(parts[2])
+
+            if layer_idx in (4, 5, 6, 7):
+
+                new_block_idx = block_idx * 2
+
+                parts[2] = str(new_block_idx)
+                new_sd['.'.join(parts)] = v
+                continue
+
+        new_sd[k] = v
+
     return new_sd
 
 
