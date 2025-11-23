@@ -123,7 +123,7 @@ def load_model(args):
 
     if args.weights_path is not None:
         print("Loading weights from:", args.weights_path)
-        raw_sd = torch.load(args.weights_path, map_location='cpu')
+        raw_sd = torch.load(args.weights_path, map_location='cpu', weights_only=True)
 
         if args.modifications == "mc_dropout":
             state_dict = remap_dropout_state_dict(raw_sd)

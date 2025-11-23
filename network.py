@@ -1,5 +1,8 @@
 import torch
 import torchvision
+from torchvision.models import resnet34, ResNet34_Weights
+from torchvision.models import resnet18, ResNet18_Weights
+from torchvision.models import resnet50, ResNet50_Weights
 from blitz.modules import BayesianLinear
 from blitz.utils import variational_estimator
 
@@ -20,15 +23,13 @@ class Network(torch.nn.Module):
         # Backbone (ResNet variants)
         # ------------------------------
         if args.backbone == 'resnet18':
-            backbone = torchvision.models.resnet18(pretrained=True)
+            backbone = resnet18(weights=ResNet18_Weights.DEFAULT)
         elif args.backbone == 'resnet34':
-            backbone = torchvision.models.resnet34(pretrained=True)
+            backbone = resnet34(weights=ResNet34_Weights.DEFAULT)
         else:
-            backbone = torchvision.models.resnet50(pretrained=True)
-
+            backbone = resnet50(weights=ResNet50_Weights.DEFAULT)
         self.backbone = torch.nn.Sequential(*list(backbone.children())[:-3])
         last_feat = list(backbone.children())[-1].in_features // 2
-
 
         # -----------------------------
         # Heads
