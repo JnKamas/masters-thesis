@@ -27,19 +27,7 @@ def read_transform_file(file):
                     [float(P[2]), float(P[6]), float(P[10])]])
         t = np.array([float(P[12]), float(P[13]), float(P[14])])
         return R, t
-
-def get_mc_predictions(path, number, mc_samples):
-    Rs, ts = [], []
-    for i in range(mc_samples):
-        fname = f'prediction{i}_scan_{number}.txt'
-        fpath = os.path.join(path, fname)
-        if not os.path.isfile(fpath):
-            return None, None
-        R, t = read_transform_file(fpath)
-        Rs.append(R)
-        ts.append(t)
-    return np.stack(Rs), np.stack(ts)
-
+        
 def mean_rotation_SVD(Rs):
     M = np.mean(Rs, axis=0)
     U, _, Vt = np.linalg.svd(M)

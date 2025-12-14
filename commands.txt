@@ -1,0 +1,30 @@
+# === Ensemble around best model ===
+
+python masters-thesis/train.py -bb resnet34 -iw 516 -ih 386 -b 12 -e 11 -de 10 -lr 1e-4 -w 0.05 -wp models/quartres_resnet34_synth.pth large-data/complete/dataset.json
+cp checkpoints/010.pth models/ensemble1/ens01.pth
+
+python masters-thesis/train.py -bb resnet34 -iw 516 -ih 386 -b 12 -e 11 -de 10 -lr 1e-4 -w 0.10 -wp models/quartres_resnet34_synth.pth large-data/complete/dataset.json
+cp checkpoints/010.pth models/ensemble1/ens02.pth
+
+python masters-thesis/train.py -bb resnet34 -iw 516 -ih 386 -b 12 -e 11 -de 10 -lr 1e-4 -w 0.15 -wp models/quartres_resnet34_synth.pth large-data/complete/dataset.json
+cp checkpoints/010.pth models/ensemble1/ens03.pth
+
+
+python masters-thesis/train.py -bb resnet34 -iw 516 -ih 386 -b 12 -e 11 -de 10 -lr 2e-4 -w 0.05 -wp models/quartres_resnet34_synth.pth large-data/complete/dataset.json
+cp checkpoints/010.pth models/ensemble1/ens04.pth
+
+python masters-thesis/train.py -bb resnet34 -iw 516 -ih 386 -b 12 -e 11 -de 10 -lr 2e-4 -w 0.10 -wp models/quartres_resnet34_synth.pth large-data/complete/dataset.json
+cp checkpoints/010.pth models/ensemble1/ens05.pth
+
+python masters-thesis/train.py -bb resnet34 -iw 516 -ih 386 -b 12 -e 11 -de 10 -lr 2e-4 -w 0.15 -wp models/quartres_resnet34_synth.pth large-data/complete/dataset.json
+cp checkpoints/010.pth models/ensemble1/ens06.pth
+
+
+python masters-thesis/train.py -bb resnet34 -iw 516 -ih 386 -b 12 -e 11 -de 10 -lr 3e-4 -w 0.05 -wp models/quartres_resnet34_synth.pth large-data/complete/dataset.json
+cp checkpoints/010.pth models/ensemble1/ens07.pth
+
+python masters-thesis/train.py -bb resnet34 -iw 516 -ih 386 -b 12 -e 11 -de 10 -lr 3e-4 -w 0.10 -wp models/quartres_resnet34_synth.pth large-data/complete/dataset.json
+cp checkpoints/010.pth models/ensemble1/ens08.pth
+
+python masters-thesis/train.py -bb resnet34 -iw 516 -ih 386 -b 12 -e 11 -de 10 -lr 3e-4 -w 0.15 -wp models/quartres_resnet34_synth.pth large-data/complete/dataset.json
+cp checkpoints/010.pth models/ensemble1/ens09.pth

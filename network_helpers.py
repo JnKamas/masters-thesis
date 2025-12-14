@@ -61,7 +61,7 @@ def parse_command_line():
     parser.add_argument('-ccw', '--complexity_cost_weight', type=float, default=0.001)
     parser.add_argument('-bt', '--bayesian_type', type=int, default=0)
     parser.add_argument('-is', '--input_sigma', type=float, default=0.1)
-
+    parser.add_argument('--ensemble_dir', type=str, default=None, help="Directory with ensemble .pth models")
     parser.add_argument('path')
 
     args = parser.parse_args()
@@ -166,3 +166,24 @@ def load_model(args):
         model.load_state_dict(torch.load(sd_path), strict=True)
 
     return model
+
+def load_models(args):
+    if args.ensemble_dir is None:
+        return [load_model(args).eval()]
+
+    models = []
+    for ckpt in sorted(os.listdir(args.ensemble_dir)):
+        if not ckpt.endswith(".pth"):
+            continue
+
+        ckpt_path = os.path.join(args.ensemble_dir, ckpt)
+        args.weights_path = ckpt_path   # reuse existing loader
+        model = load_model(args).eval()
+        models.append(model)
+
+    if not models:
+        raise RuntimeError("Empty ensemble directory")
+
+    return models
+
+

@@ -10,6 +10,70 @@ from metrics import *
 
 warnings.filterwarnings("ignore", category=RuntimeWarning)
 
+def get_mc_predictions(path, number, mc_samples):
+    Rs, ts = [], []
+    for i in range(mc_samples):
+        fname = f'prediction{i}_scan_{number}.txt'
+        fpath = os.path.join(path, fname)
+        if not os.path.isfile(fpath):
+            return None, None
+        R, t = read_transform_file(fpath)
+        Rs.append(R)
+        ts.append(t)
+    return np.stack(Rs), np.stack(ts)
+
+def get_ensemble_predictions(root_path, number, mc_samples=None):
+    """
+    root_path: inference/<ensemble_name>
+    number: scan index (e.g. 000123)
+    mc_samples: if not None → ensemble_mc_dropout
+    """
+
+    Rs, ts = [], []
+
+    # each subdir = one ensemble member
+    model_dirs = sorted(
+        d for d in os.listdir(root_path)
+        if os.path.isdir(os.path.join(root_path, d))
+    )
+
+    if not model_dirs:
+        return None, None
+
+    for model_dir in model_dirs:
+        model_path = os.path.join(root_path, model_dir)
+
+        # find object subfolder(s)
+        for obj_root, _, _ in os.walk(model_path):
+            if f"scan_{number}.txt" not in os.listdir(obj_root):
+                continue
+
+            if mc_samples is not None:
+                # ensemble + mc_dropout
+                for i in range(mc_samples):
+                    fname = f"prediction{i}_scan_{number}.txt"
+                    fpath = os.path.join(obj_root, fname)
+                    if not os.path.isfile(fpath):
+                        return None, None
+                    R, t = read_transform_file(fpath)
+                    Rs.append(R)
+                    ts.append(t)
+            else:
+                # plain ensemble
+                fname = f"prediction_scan_{number}.txt"
+                fpath = os.path.join(obj_root, fname)
+                if not os.path.isfile(fpath):
+                    return None, None
+                R, t = read_transform_file(fpath)
+                Rs.append(R)
+                ts.append(t)
+
+    if not Rs:
+        return None, None
+
+    return np.stack(Rs), np.stack(ts)
+
+
 def evaluate(args):
     gt_files = glob.iglob(args.path + '/**/*.txt', recursive=True)
     good_gt_files = [f for f in gt_files if not any(sub in f for sub in ['bad', 'catas', 'ish', 'pred', 'icp', 'refined']) and any(sub in f for sub in ['scan_', 'gt_'])]
@@ -57,23 +121,39 @@ def evaluate(args):
                 print("Prediction file not found for " + file)
                 continue
 
-        if args.modifications == "mc_dropout" or args.modifications == "bayesian":
+        if args.modifications in {"mc_dropout", "bayesian"}:
             Rs, ts = get_mc_predictions(path, number, args.mc_samples)
             if Rs is None:
                 print(f"Some MC samples missing for {number}, skipping.")
                 continue
-            mean_t = np.mean(ts, axis=0)
-            std_t = np.std(ts, axis=0)
-            pr_t = mean_t
-            pr_R = mean_rotation_SVD(Rs)
-            pts_arr = ts
-            rots = Rs
+
+        elif args.modifications == "ensemble":
+            # NOTE: pass ensemble ROOT, not object path
+            Rs, ts = get_ensemble_predictions(args.path, number)
+            if Rs is None:
+                print(f"No ensemble predictions for {number}, skipping.")
+                continue
+
+        elif args.modifications == "ensemble_mc_dropout":
+            Rs, ts = get_ensemble_predictions(
+                args.path, number, mc_samples=args.mc_samples
+            )
+            if Rs is None:
+                print(f"No ensemble MC predictions for {number}, skipping.")
+                continue
+
         else:
             pr_R, pr_t = read_transform_file(os.path.join(path, pr_file))
-            pts_arr = np.expand_dims(pr_t, 0)
-            rots = np.expand_dims(pr_R, 0)
-            mean_t = pr_t
-            std_t = np.zeros_like(pr_t)
+            Rs = np.expand_dims(pr_R, 0)
+            ts = np.expand_dims(pr_t, 0)
+        # ---- shared logic (already exists) ----
+        mean_t = np.mean(ts, axis=0)
+        std_t = np.std(ts, axis=0)
+        pr_t = mean_t
+        pr_R = mean_rotation_SVD(Rs)
+        pts_arr = ts
+        rots = Rs
+
 
         gt_R1, gt_t = read_transform_file(os.path.join(path, gt_file))
         if np.linalg.det(gt_R1) < 0:

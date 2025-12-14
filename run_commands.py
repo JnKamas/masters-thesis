@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 import subprocess
 
-with open("masters-thesis/commands.txt", "r") as file:
+with open("/home/k/kamas7/thesis/masters-thesis/commands.txt", "r") as file:
     commands = [line.strip() for line in file if line.strip() and not line.strip().startswith("#")]
 
 for cmd in commands:

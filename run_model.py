@@ -23,9 +23,9 @@ def build_parser(proj_root):
 
     # Model / backbone
     parser.add_argument("-mod", "--modifications",
-                        choices=["mc_dropout", "bayesian"],
+                        choices=["mc_dropout", "bayesian", "ensemble", "ensemble_mc_dropout"],
                         default=None,
-                        help="Modification type (options: mc_dropout, bayesian)")
+                        help="Modification type (options: mc_dropout, bayesian, ensemble, ensemble_mc_dropout)")
     parser.add_argument("-bb", "--backbone",
                         default="resnet34",
                         help="Backbone for inference")
@@ -68,6 +68,8 @@ def build_parser(proj_root):
     parser.add_argument("-is", "--input_sigma", type=float, default=0.1,
                         help="Input sigma for Bayesian layers")
 
+    parser.add_argument("--eval_only", type=bool, default=False,
+                        help="If True, only runs evaluation on existing inference results")
     return parser
 
 
@@ -148,21 +150,43 @@ def main():
     infer_script = os.path.join(script_dir, "infer.py")
     eval_script = os.path.join(script_dir, "evaluate.py")
 
-    weights_path = os.path.join(args.models_dir, args.model_name + ".pth")
     inference_output_dir = os.path.join(args.inference_dir, args.model_name)
 
     # Clean old infer output
-    if os.path.exists(inference_output_dir):
-        shutil.rmtree(inference_output_dir)
-    os.makedirs(inference_output_dir, exist_ok=True)
+    if not args.eval_only:
+        if os.path.exists(inference_output_dir):
+            shutil.rmtree(inference_output_dir)
+        os.makedirs(inference_output_dir, exist_ok=True)
 
     # -----------------------------
     # 1) INFERENCE
     # -----------------------------
-    infer_cmd = build_infer_cmd(args, infer_script, weights_path)
-    print("▶︎ Inference:", " ".join(infer_cmd))
-    if subprocess.run(infer_cmd).returncode != 0:
-        sys.exit(1)
+    if not args.eval_only:
+        if args.modifications in ["ensemble", "ensemble_mc_dropout"]:
+            ensemble_dir = os.path.join(args.models_dir, args.model_name)
+
+            if not os.path.isdir(ensemble_dir):
+                raise FileNotFoundError(f"Ensemble folder not found: {ensemble_dir}")
+
+            ckpts = sorted(f for f in os.listdir(ensemble_dir) if f.endswith(".pth"))
+            if not ckpts:
+                raise RuntimeError(f"No .pth files in ensemble folder {ensemble_dir}")
+
+            for ckpt in ckpts:
+                weights_path = os.path.join(ensemble_dir, ckpt)
+                infer_cmd = build_infer_cmd(args, infer_script, weights_path)
+
+                print("▶︎ Inference (ensemble):", " ".join(infer_cmd))
+                if subprocess.run(infer_cmd).returncode != 0:
+                    sys.exit(1)
+
+        else:
+            weights_path = os.path.join(args.models_dir, args.model_name + ".pth")
+
+            infer_cmd = build_infer_cmd(args, infer_script, weights_path)
+            print("▶︎ Inference:", " ".join(infer_cmd))
+            if subprocess.run(infer_cmd).returncode != 0:
+                sys.exit(1)
 
     # -----------------------------
     # 2) EVALUATION

@@ -13,3 +13,6 @@ logs/
 
 # Ignore environment files
 .env
+
+*workspace*
+inference/

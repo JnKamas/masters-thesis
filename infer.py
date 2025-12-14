@@ -27,7 +27,10 @@ def infer(args, export_to_folder=True):
     weights_path = getattr(args, 'weights', None) \
                 or getattr(args, 'weights_path', None) \
                 or getattr(args, 'resume', None)
-    if weights_path:
+    if args.modifications in ["ensemble", "ensemble_mc_dropout"] and weights_path:
+        # models/ensemble1/modelA.pth → ensemble1
+        model_name = os.path.basename(os.path.dirname(weights_path))
+    elif weights_path:
         model_name = os.path.splitext(os.path.basename(weights_path))[0]
     else:
         model_name = 'model'
@@ -54,7 +57,7 @@ def infer(args, export_to_folder=True):
     np.set_printoptions(suppress=True)
 
     with torch.no_grad():
-        if args.modifications == "mc_dropout":
+        if args.modifications in ["mc_dropout", "ensemble_mc_dropout"]:
             enable_dropout(model)
 
         PRINT_PREDS = False   # <-- set True if you want to print GT + predictions
@@ -74,7 +77,7 @@ def infer(args, export_to_folder=True):
         for sample in progress:
 
             # Monte Carlo / Bayesian branch
-            if args.modifications in {"mc_dropout", "bayesian"}:
+            if args.modifications in {"mc_dropout", "bayesian", "ensemble_mc_dropout"}:
                 for mc_idx in range(args.mc_samples):
                     z, y, t = model(sample['xyz'].cuda())
                     pred_zs = z.cpu().numpy()
