@@ -36,7 +36,10 @@ def infer(args, export_to_folder=True):
         model_name = 'model'
 
     # root for all predictions: ~/inference/<model_name>
-    export_root = os.path.expanduser(f'~/thesis/inference/{model_name}')
+    if args.out_dir is not None:
+        export_root = os.path.expanduser(args.out_dir)
+    else:
+        export_root = os.path.expanduser(f'~/thesis/inference/{model_name}')
     os.makedirs(export_root, exist_ok=True)
 
     # prepare data

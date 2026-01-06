@@ -1,11 +1,16 @@
 import argparse
 import glob
 import os
+from datetime import datetime
+from pathlib import Path
+import json
 import numpy as np
 from statistics import mean, median
 from scipy.linalg import logm, svd
 from scipy.spatial.transform import Rotation as sciR
 import warnings
+from collections import defaultdict
+import shutil
 from metrics import *
 
 warnings.filterwarnings("ignore", category=RuntimeWarning)
@@ -22,59 +27,83 @@ def get_mc_predictions(path, number, mc_samples):
         ts.append(t)
     return np.stack(Rs), np.stack(ts)
 
-def get_ensemble_predictions(root_path, number, mc_samples=None):
+def merge_ensemble_to_mc(
+    ensemble_root=os.path.expanduser("~/thesis/inference/finetune_ens_ep15_40"),
+    out_root=os.path.expanduser("~/thesis/inference/finetune_ens_ep15_40_merged"),
+    prefix="prediction",
+):
     """
-    root_path: inference/<ensemble_name>
-    number: scan index (e.g. 000123)
-    mc_samples: if not None → ensemble_mc_dropout
+    Convert ensemble inference outputs into MC-dropout-like structure.
+
+    ensemble_root:
+      inference/<ensemble_name>/
+        ens01/<dataset>/prediction_scan_XXX.txt
+        ens02/<dataset>/prediction_scan_XXX.txt
+        ...
+
+    out_root:
+      inference/<ensemble_name>_merged/
+        <dataset>/prediction{i}_scan_XXX.txt
+
+    PROLY DOES NOT WORK WITH MCDROP x ENSEMBLE YET BUT IDC python ~/thesis/masters-thesis/run_model.py -mod mc_dropout --eval_only finetune_ens_ep15_merged
+
     """
 
-    Rs, ts = [], []
+    os.makedirs(out_root, exist_ok=True)
 
-    # each subdir = one ensemble member
-    model_dirs = sorted(
-        d for d in os.listdir(root_path)
-        if os.path.isdir(os.path.join(root_path, d))
+    # ensemble members
+    members = sorted(
+        d for d in os.listdir(ensemble_root)
+        if os.path.isdir(os.path.join(ensemble_root, d))
     )
 
-    if not model_dirs:
-        return None, None
+    if not members:
+        raise RuntimeError("No ensemble members found")
 
-    for model_dir in model_dirs:
-        model_path = os.path.join(root_path, model_dir)
+    # discover datasets
+    datasets = set()
+    for m in members:
+        mdir = os.path.join(ensemble_root, m)
+        for d in os.listdir(mdir):
+            if os.path.isdir(os.path.join(mdir, d)):
+                datasets.add(d)
 
-        # find object subfolder(s)
-        for obj_root, _, _ in os.walk(model_path):
-            if f"scan_{number}.txt" not in os.listdir(obj_root):
+    for dataset in sorted(datasets):
+        out_dataset_dir = os.path.join(out_root, dataset)
+        os.makedirs(out_dataset_dir, exist_ok=True)
+
+        # collect predictions per scan
+        scans = defaultdict(list)
+
+        for mi, member in enumerate(members):
+            src_dir = os.path.join(ensemble_root, member, dataset)
+            if not os.path.isdir(src_dir):
                 continue
 
-            if mc_samples is not None:
-                # ensemble + mc_dropout
-                for i in range(mc_samples):
-                    fname = f"prediction{i}_scan_{number}.txt"
-                    fpath = os.path.join(obj_root, fname)
-                    if not os.path.isfile(fpath):
-                        return None, None
-                    R, t = read_transform_file(fpath)
-                    Rs.append(R)
-                    ts.append(t)
-            else:
-                # plain ensemble
-                fname = f"prediction_scan_{number}.txt"
-                fpath = os.path.join(obj_root, fname)
-                if not os.path.isfile(fpath):
-                    return None, None
-                R, t = read_transform_file(fpath)
-                Rs.append(R)
-                ts.append(t)
+            for fname in os.listdir(src_dir):
+                if not fname.startswith("prediction_scan_"):
+                    continue
 
-    if not Rs:
-        return None, None
+                scan_id = fname.replace("prediction_scan_", "")
+                scans[scan_id].append((mi, os.path.join(src_dir, fname)))
 
-    return np.stack(Rs), np.stack(ts)
+        # write MC-style files
+        for scan_id, files in scans.items():
+            for mc_idx, src in files:
+                dst = os.path.join(
+                    out_dataset_dir,
+                    f"{prefix}{mc_idx}_scan_{scan_id}"
+                )
+                shutil.copyfile(src, dst)
 
+    print(f"✔ Ensemble merged into MC-style structure at:\n  {out_root}")
+
+def get_ensemble_predictions(path, number, mc_samples=None):
+
+    return get_mc_predictions(path, number, mc_samples=7)
 
 def evaluate(args):
+    print(args.path)
     gt_files = glob.iglob(args.path + '/**/*.txt', recursive=True)
     good_gt_files = [f for f in gt_files if not any(sub in f for sub in ['bad', 'catas', 'ish', 'pred', 'icp', 'refined']) and any(sub in f for sub in ['scan_', 'gt_'])]
 
@@ -124,7 +153,7 @@ def evaluate(args):
         if args.modifications in {"mc_dropout", "bayesian"}:
             Rs, ts = get_mc_predictions(path, number, args.mc_samples)
             if Rs is None:
-                print(f"Some MC samples missing for {number}, skipping.")
+                print(f"Some MC samples missing for {args.path, number}, skipping.")
                 continue
 
         elif args.modifications == "ensemble":

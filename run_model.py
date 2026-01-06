@@ -162,19 +162,32 @@ def main():
     # 1) INFERENCE
     # -----------------------------
     if not args.eval_only:
+
         if args.modifications in ["ensemble", "ensemble_mc_dropout"]:
-            ensemble_dir = os.path.join(args.models_dir, args.model_name)
 
-            if not os.path.isdir(ensemble_dir):
-                raise FileNotFoundError(f"Ensemble folder not found: {ensemble_dir}")
+            ensemble_models_dir = os.path.join(args.models_dir, args.model_name)
+            ensemble_out_dir = os.path.join(args.inference_dir, args.model_name)
 
-            ckpts = sorted(f for f in os.listdir(ensemble_dir) if f.endswith(".pth"))
+            if not os.path.isdir(ensemble_models_dir):
+                raise FileNotFoundError(f"Ensemble folder not found: {ensemble_models_dir}")
+
+            ckpts = sorted(f for f in os.listdir(ensemble_models_dir) if f.endswith(".pth"))
             if not ckpts:
-                raise RuntimeError(f"No .pth files in ensemble folder {ensemble_dir}")
+                raise RuntimeError(f"No .pth files in ensemble folder {ensemble_models_dir}")
+
+            os.makedirs(ensemble_out_dir, exist_ok=True)
 
             for ckpt in ckpts:
-                weights_path = os.path.join(ensemble_dir, ckpt)
+                member_name = os.path.splitext(ckpt)[0]   # ens01, ens02, ...
+                member_out_dir = os.path.join(ensemble_out_dir, member_name)
+                os.makedirs(member_out_dir, exist_ok=True)
+
+                weights_path = os.path.join(ensemble_models_dir, ckpt)
+
                 infer_cmd = build_infer_cmd(args, infer_script, weights_path)
+
+                # IMPORTANT: force infer.py output directory
+                infer_cmd += ["--out_dir", member_out_dir]
 
                 print("▶︎ Inference (ensemble):", " ".join(infer_cmd))
                 if subprocess.run(infer_cmd).returncode != 0:
@@ -182,8 +195,8 @@ def main():
 
         else:
             weights_path = os.path.join(args.models_dir, args.model_name + ".pth")
-
             infer_cmd = build_infer_cmd(args, infer_script, weights_path)
+
             print("▶︎ Inference:", " ".join(infer_cmd))
             if subprocess.run(infer_cmd).returncode != 0:
                 sys.exit(1)
