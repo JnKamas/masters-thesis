@@ -337,6 +337,112 @@ def evaluate(args):
 
     print("\n=== END ===")
 
+        # ---------------- JSON EXPORT ----------------
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+
+    metadata = {
+        "timestamp": timestamp,
+        "modifications": args.modifications,
+        "mc_samples": args.mc_samples if args.modifications not in ["none", "ensemble"] else None,
+        "model_name": Path(args.path).name,
+        "dataset": Path(args.path).name,
+        "num_samples": len(eTE_list),
+    }
+
+    results = {
+        "pose_metrics": {
+            "eTE": {
+                "mean": mean(eTE_list),
+                "std": float(np.std(eTE_list)),
+                "median": median(eTE_list),
+                "min": min(eTE_list),
+                "max": max(eTE_list),
+            },
+            "eRE": {
+                "mean": mean(eRE_list),
+                "std": float(np.std(eRE_list)),
+                "median": median(eRE_list),
+                "min": min(eRE_list),
+                "max": max(eRE_list),
+            },
+            "eGD": {
+                "mean": mean(eGD_list),
+                "std": float(np.std(eGD_list)),
+                "median": median(eGD_list),
+                "min": min(eGD_list),
+                "max": max(eGD_list),
+            },
+        },
+
+        "translation": {
+            "nll": {
+                "mean": mean_nll,
+                "std": std_nll,
+            },
+            "ece": {
+                "scalar": ece,
+                "macro": ece_macro,
+                "per_dim": list(ece_xyz),
+            },
+            "sharpness": {
+                "vector": sharp_vec,
+                "per_dim": sharp_dims.tolist(),
+            },
+            "coverage": {
+                "gt": (coverage_t / n_samples).tolist(),
+                "pred": (coverage_pred_t / n_samples).tolist(),
+            },
+        },
+
+        "rotation": {
+            "mean_error": {
+                "rad": mean_ang_err,
+                "deg": float(np.degrees(mean_ang_err)),
+            },
+            "nll": nll_R,
+            "ece": {
+                "rad": ece_R,
+                "deg": float(np.degrees(ece_R)),
+            },
+            "sharpness": {
+                "rad": sharp_R,
+                "deg": float(np.degrees(sharp_R)),
+            },
+            "credible_region": {
+                "radius_rad": float(np.mean(credible_region_radii)),
+                "coverage": float(np.mean(credible_region_coverages)),
+            },
+        },
+
+        "ucs": {
+            "translation": {
+                "macro": ucs_t_macro,
+                "per_dim": ucs_t_dims,
+            },
+            "rotation_rodrigues": {
+                "macro": ucs_r_macro,
+                "per_dim": ucs_r_dims,
+            },
+            "rotation_geodesic": ucs_r_angle,
+        },
+    }
+
+    final_json = {
+        "meta": metadata,
+        "results": results,
+    }
+
+    eval_dir = Path.home() / "thesis" / "eval_results"
+    eval_dir.mkdir(parents=True, exist_ok=True)
+
+    out_file = eval_dir / f"evaluation_{timestamp}.json"
+
+    with open(out_file, "w") as f:
+        json.dump(final_json, f, indent=2)
+
+    print(f"\n✔ JSON results saved to: {out_file}")
+
+
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument('path', help='Path to dataset root folder.')
