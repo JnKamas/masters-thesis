@@ -16,192 +16,6 @@ from network_helpers import normalized_l2_loss, parse_command_line, load_model
 from dataset import Dataset
 
 
-def get_angles(pred, gt, sym_inv=False, eps=1e-7):
-    """
-    Calculates angle between pred and gt vectors.
-    Clamping args in acos due to: https://github.com/pytorch/pytorch/issues/8069
-
-    :param pred: tensor with shape (batch_size, 3)
-    :param gt: tensor with shape (batch_size, 3)
-    :param sym_inv: if True the angle is calculated w.r.t bin symmetry
-    :param eps: float for NaN avoidance if pred is 0
-    :return: tensor with shape (batch_size) containing angles
-    """
-    pred_norm = torch.norm(pred, dim=-1)
-    gt_norm = torch.norm(gt, dim=-1)
-    dot = torch.sum(pred * gt, dim=-1)
-
-    if sym_inv:
-        cos = torch.clamp(torch.abs(dot / (eps + pred_norm * gt_norm)), -1 + eps, 1 - eps)
-    else:
-        cos = torch.clamp(dot / (eps + pred_norm * gt_norm), -1 + eps, 1 - eps)
-
-    return torch.acos(cos)
-
-
-def bayesian_combined_loss(args, preds, targets):
-    pred_z, pred_y, pred_t = preds
-    gt_z, gt_y, gt_t = targets
-
-    loss_z = torch.mean(get_angles(pred_z, gt_z))
-    loss_y = torch.mean(get_angles(pred_y, gt_y))
-    loss_t = torch.nn.L1Loss()(pred_t, gt_t)
-
-    total_loss = loss_z + loss_y + args.weight * loss_t
-    return total_loss, loss_z.detach(), loss_y.detach(), loss_t.detach()
-
-
-def train(args):
-    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    torch.backends.cudnn.benchmark = True
-
-    model = load_model(args).to(device)
-
-    train_dataset = Dataset(
-        args.path, "train",
-        args.input_width, args.input_height,
-        noise_sigma=args.noise_sigma,
-        t_sigma=args.t_sigma,
-        random_rot=args.random_rot,
-        preload=not args.no_preload
-    )
-    train_loader = DataLoader(train_dataset, batch_size=args.batch_size, shuffle=True, num_workers=args.workers)
-
-    val_dataset = Dataset(
-        args.path, "val",
-        args.input_width, args.input_height,
-        preload=not args.no_preload
-    )
-    val_loader = DataLoader(val_dataset, batch_size=args.batch_size, shuffle=False, num_workers=args.workers)
-
-    optimizer = torch.optim.Adam(model.parameters(), lr=args.learning_rate)
-
-    l1_loss = torch.nn.L1Loss()
-    is_bayesian = args.modifications == "bayesian"
-
-    loss_running = loss_t_running = loss_z_running = loss_y_running = 0.0
-
-    start_epoch = args.resume if args.resume is not None else 0
-    print(f"Starting at epoch {start_epoch}")
-    print(f"Running till epoch {args.epochs}")
-
-    train_loss_all, val_loss_all = [], []
-
-    for e in range(start_epoch, args.epochs):
-        print(f"Starting epoch: {e}")
-        model.train()
-
-        for sample in train_loader:
-            xyz = sample['xyz'].to(device)
-            gt_z = sample['bin_transform'][:, :3, 2].to(device)
-            gt_y = sample['bin_transform'][:, :3, 1].to(device)
-            gt_t = sample['bin_translation'].to(device)
-
-            optimizer.zero_grad()
-
-            if is_bayesian:
-                loss_parts = []
-
-                def wrapped_loss(preds, targets):
-                    total, lz, ly, lt = bayesian_combined_loss(args, preds, targets)
-                    loss_parts.append((lz, ly, lt))
-                    return total
-
-                loss = model.sample_elbo(
-                    xyz, (gt_z, gt_y, gt_t),
-                    criterion=wrapped_loss,
-                    sample_nbr=args.sample_nbr,
-                    complexity_cost_weight=args.complexity_cost_weight
-                )
-                loss_z, loss_y, loss_t = loss_parts[-1]
-
-            else:
-                pred_z, pred_y, pred_t = model(xyz)
-
-                loss_z = torch.mean(get_angles(pred_z, gt_z))
-                loss_y = torch.mean(get_angles(pred_y, gt_y))
-                loss_t = args.weight * l1_loss(pred_t, gt_t)
-                loss = loss_z + loss_y + loss_t
-
-            loss_z_running = 0.9 * loss_z_running + 0.1 * loss_z.item()
-            loss_y_running = 0.9 * loss_y_running + 0.1 * loss_y.item()
-            loss_t_running = 0.9 * loss_t_running + 0.1 * loss_t.item()
-            loss_running = 0.9 * loss_running + 0.1 * loss.item()
-
-            print(
-                f"Running loss: {loss_running:.6f}, "
-                f"z: {loss_z_running:.6f}, y: {loss_y_running:.6f}, t: {loss_t_running:.6f}"
-            )
-
-            loss.backward()
-            optimizer.step()
-
-        train_loss_all.append(loss_running)
-
-        # ---------------------- Validation --------------------
-        model.eval()
-        with torch.no_grad():
-            val_losses = []
-            val_losses_z = []
-            val_losses_y = []
-            val_losses_t = []
-
-            for sample in val_loader:
-                xyz = sample['xyz'].to(device)
-                gt_z = sample['bin_transform'][:, :3, 2].to(device)
-                gt_y = sample['bin_transform'][:, :3, 1].to(device)
-                gt_t = sample['bin_translation'].to(device)
-
-                if is_bayesian:
-                    preds = [model(xyz) for _ in range(3)]
-                    pred_z = torch.mean(torch.stack([p[0] for p in preds]), dim=0)
-                    pred_y = torch.mean(torch.stack([p[1] for p in preds]), dim=0)
-                    pred_t = torch.mean(torch.stack([p[2] for p in preds]), dim=0)
-                else:
-                    pred_z, pred_y, pred_t = model(xyz)
-
-                lz = torch.mean(get_angles(pred_z, gt_z))
-                ly = torch.mean(get_angles(pred_y, gt_y, sym_inv=True))
-                lt = args.weight * l1_loss(pred_t, gt_t)
-                l = lz + ly + lt
-
-                val_losses.append(l.item())
-                val_losses_z.append(lz.item())
-                val_losses_y.append(ly.item())
-                val_losses_t.append(lt.item())
-
-            print(20 * "*")
-            print(f"Epoch {e}/{args.epochs}")
-            print(
-                "means - val: {:.6f}, z: {:.6f}, y: {:.6f}, t: {:.6f}".format(
-                    np.mean(val_losses),
-                    np.mean(val_losses_z),
-                    np.mean(val_losses_y),
-                    np.mean(val_losses_t),
-                )
-            )
-
-            val_loss_all.append(np.mean(val_losses))
-
-        if args.dump_every != 0 and e % args.dump_every == 0:
-            os.makedirs("checkpoints", exist_ok=True)
-            torch.save(model.state_dict(), f"checkpoints/{e:03d}.pth")
-
-        with open("loss_log.txt", "a") as f:
-            f.write(f"{e+1}\t{loss_running:.6f}\t{np.mean(val_losses):.6f}\n")
-
-    # Save finals
-    os.makedirs("models", exist_ok=True)
-    torch.save(model.state_dict(), f"models/bayes_is{args.input_sigma}.pth")
-
-    np.savetxt('train_err.out', np.array(train_loss_all))
-    np.savetxt('val_err.out', np.array(val_loss_all))
-
-
-if __name__ == "__main__":
-    args = parse_command_line()
-    train(args)
-
 def get_angles(pred, gt, sym_inv: bool = False, eps: float = 1e-7) -> torch.Tensor:
     """
     Calculates angle between pred and gt vectors.
@@ -334,7 +148,7 @@ def train(args):
 
             else:
                 # Deterministic / MC-Dropout mode
-                pred_z, pred_y, pred_t = model(xyz)
+                pred_z, pred_y, pred_t, pred_kappa = model(xyz)
 
                 # Angle loss is used for rotational components.
                 loss_z = torch.mean(get_angles(pred_z, gt_z))
@@ -384,8 +198,9 @@ def train(args):
                     pred_z = torch.mean(torch.stack([p[0] for p in preds]), dim=0)
                     pred_y = torch.mean(torch.stack([p[1] for p in preds]), dim=0)
                     pred_t = torch.mean(torch.stack([p[2] for p in preds]), dim=0)
+                    pred_kappa = torch.mean(torch.stack([p[3] for p in preds]), dim=0)
                 else:
-                    pred_z, pred_y, pred_t = model(xyz)
+                    pred_z, pred_y, pred_t, pred_kappa = model(xyz)
 
                 loss_z = torch.mean(get_angles(pred_z, gt_z))
                 # In eval you had sym_inv=True originally for y-axis; kept that here.
