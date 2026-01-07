@@ -27,81 +27,6 @@ def get_mc_predictions(path, number, mc_samples):
         ts.append(t)
     return np.stack(Rs), np.stack(ts)
 
-def merge_ensemble_to_mc(
-    ensemble_root=os.path.expanduser("~/thesis/inference/finetune_ens_ep15_40"),
-    out_root=os.path.expanduser("~/thesis/inference/finetune_ens_ep15_40_merged"),
-    prefix="prediction",
-):
-    """
-    Convert ensemble inference outputs into MC-dropout-like structure.
-
-    ensemble_root:
-      inference/<ensemble_name>/
-        ens01/<dataset>/prediction_scan_XXX.txt
-        ens02/<dataset>/prediction_scan_XXX.txt
-        ...
-
-    out_root:
-      inference/<ensemble_name>_merged/
-        <dataset>/prediction{i}_scan_XXX.txt
-
-    PROLY DOES NOT WORK WITH MCDROP x ENSEMBLE YET BUT IDC python ~/thesis/masters-thesis/run_model.py -mod mc_dropout --eval_only finetune_ens_ep15_merged
-
-    """
-
-    os.makedirs(out_root, exist_ok=True)
-
-    # ensemble members
-    members = sorted(
-        d for d in os.listdir(ensemble_root)
-        if os.path.isdir(os.path.join(ensemble_root, d))
-    )
-
-    if not members:
-        raise RuntimeError("No ensemble members found")
-
-    # discover datasets
-    datasets = set()
-    for m in members:
-        mdir = os.path.join(ensemble_root, m)
-        for d in os.listdir(mdir):
-            if os.path.isdir(os.path.join(mdir, d)):
-                datasets.add(d)
-
-    for dataset in sorted(datasets):
-        out_dataset_dir = os.path.join(out_root, dataset)
-        os.makedirs(out_dataset_dir, exist_ok=True)
-
-        # collect predictions per scan
-        scans = defaultdict(list)
-
-        for mi, member in enumerate(members):
-            src_dir = os.path.join(ensemble_root, member, dataset)
-            if not os.path.isdir(src_dir):
-                continue
-
-            for fname in os.listdir(src_dir):
-                if not fname.startswith("prediction_scan_"):
-                    continue
-
-                scan_id = fname.replace("prediction_scan_", "")
-                scans[scan_id].append((mi, os.path.join(src_dir, fname)))
-
-        # write MC-style files
-        for scan_id, files in scans.items():
-            for mc_idx, src in files:
-                dst = os.path.join(
-                    out_dataset_dir,
-                    f"{prefix}{mc_idx}_scan_{scan_id}"
-                )
-                shutil.copyfile(src, dst)
-
-    print(f"✔ Ensemble merged into MC-style structure at:\n  {out_root}")
-
-def get_ensemble_predictions(path, number, mc_samples=None):
-
-    return get_mc_predictions(path, number, mc_samples=7)
-
 def evaluate(args):
     print(args.path)
     gt_files = glob.iglob(args.path + '/**/*.txt', recursive=True)
@@ -142,39 +67,24 @@ def evaluate(args):
         index = gt_file.rfind("_")
         number = gt_file[index + 1:-4]
 
-        pr_file = number + '.txt'
-        if not os.path.isfile(os.path.join(path, pr_file)):
-            if os.path.isfile(os.path.join(path, 'prediction_scan_' + number + '.txt')):
-                pr_file = 'prediction_scan_' + number + '.txt'
-            else:
-                print("Prediction file not found for " + file)
-                continue
-
-        if args.modifications in {"mc_dropout", "bayesian"}:
+        if args.modifications in {"mc_dropout", "bayesian", "ensemble", "ensemble_mc_dropout"}:
             Rs, ts = get_mc_predictions(path, number, args.mc_samples)
             if Rs is None:
-                print(f"Some MC samples missing for {args.path, number}, skipping.")
+                print(f"Some samples missing for {number}, skipping.")
                 continue
-
-        elif args.modifications == "ensemble":
-            # NOTE: pass ensemble ROOT, not object path
-            Rs, ts = get_ensemble_predictions(args.path, number)
-            if Rs is None:
-                print(f"No ensemble predictions for {number}, skipping.")
-                continue
-
-        elif args.modifications == "ensemble_mc_dropout":
-            Rs, ts = get_ensemble_predictions(
-                args.path, number, mc_samples=args.mc_samples
-            )
-            if Rs is None:
-                print(f"No ensemble MC predictions for {number}, skipping.")
-                continue
-
         else:
+            pr_file = number + '.txt'
+            if not os.path.isfile(os.path.join(path, pr_file)):
+                if os.path.isfile(os.path.join(path, 'prediction_scan_' + number + '.txt')):
+                    pr_file = 'prediction_scan_' + number + '.txt'
+                else:
+                    print("Prediction file not found for " + file)
+                    continue
+
             pr_R, pr_t = read_transform_file(os.path.join(path, pr_file))
             Rs = np.expand_dims(pr_R, 0)
             ts = np.expand_dims(pr_t, 0)
+
         # ---- shared logic (already exists) ----
         mean_t = np.mean(ts, axis=0)
         std_t = np.std(ts, axis=0)

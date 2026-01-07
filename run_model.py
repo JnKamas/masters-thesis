@@ -104,14 +104,27 @@ def build_infer_cmd(args, infer_script, weights_path):
 
 
 def build_eval_cmd(args, eval_script, inference_output_dir):
+    mc_samples = args.mc_samples
+
+    # For ensemble, mc_samples = number of ensemble members
+    if args.modifications in ["ensemble", "ensemble_mc_dropout"]:
+        models_dir = os.path.join(args.models_dir, args.model_name)
+        mc_samples = len([
+            f for f in os.listdir(models_dir)
+            if f.endswith(".pth")
+        ])
+
     cmd = [
         sys.executable, eval_script,
-        "--mc_samples", str(args.mc_samples),
+        "--mc_samples", str(mc_samples),
         inference_output_dir
     ]
+
     if args.modifications:
         cmd += ["--modifications", args.modifications]
+
     return cmd
+
 
 
 # ------------------------------------------------------------
@@ -136,6 +149,60 @@ def save_results(proj_root, args, evaluated_block):
 
     return result_file
 
+# ------------------------------------------------------------
+# Merge ensembles into MC-like structure
+# ------------------------------------------------------------
+def merge_ensemble_as_mc(inference_dir):
+    """
+    Convert:
+      inference/run/ensXX/dataset/prediction_scan_YYY.txt
+    into:
+      inference/run_merged/dataset/prediction{i}_scan_YYY.txt
+    """
+    merged_dir = inference_dir + "_merged"
+
+    if os.path.exists(merged_dir):
+        shutil.rmtree(merged_dir)
+    os.makedirs(merged_dir, exist_ok=True)
+
+    members = sorted(
+        d for d in os.listdir(inference_dir)
+        if os.path.isdir(os.path.join(inference_dir, d))
+    )
+
+    datasets = set()
+    for m in members:
+        mdir = os.path.join(inference_dir, m)
+        for d in os.listdir(mdir):
+            if os.path.isdir(os.path.join(mdir, d)):
+                datasets.add(d)
+
+    for dataset in datasets:
+        out_ds = os.path.join(merged_dir, dataset)
+        os.makedirs(out_ds, exist_ok=True)
+
+        # copy GT once (from first member)
+        first_member_ds = os.path.join(inference_dir, members[0], dataset)
+        for f in os.listdir(first_member_ds):
+            if f.startswith("scan_") and f.endswith(".txt"):
+                shutil.copyfile(
+                    os.path.join(first_member_ds, f),
+                    os.path.join(out_ds, f),
+                )
+
+        # copy predictions as MC samples
+        for mi, member in enumerate(members):
+            src_ds = os.path.join(inference_dir, member, dataset)
+            for f in os.listdir(src_ds):
+                if f.startswith("prediction_scan_"):
+                    scan_id = f.replace("prediction_scan_", "")
+                    dst = f"prediction{mi}_scan_{scan_id}"
+                    shutil.copyfile(
+                        os.path.join(src_ds, f),
+                        os.path.join(out_ds, dst),
+                    )
+
+    return merged_dir
 
 # ------------------------------------------------------------
 # Main
@@ -204,7 +271,13 @@ def main():
     # -----------------------------
     # 2) EVALUATION
     # -----------------------------
-    eval_cmd = build_eval_cmd(args, eval_script, inference_output_dir)
+    eval_input_dir = inference_output_dir
+
+    if args.modifications in ["ensemble", "ensemble_mc_dropout"]:
+        eval_input_dir = merge_ensemble_as_mc(inference_output_dir)
+
+    eval_cmd = build_eval_cmd(args, eval_script, eval_input_dir)
+
     print("▶︎ Evaluation:", " ".join(eval_cmd))
 
     result = subprocess.run(
@@ -220,9 +293,9 @@ def main():
     evaluated_block = lines[start:] if start is not None else []
 
     # Save results
-    out_file = save_results(proj_root, args, evaluated_block)
+    # out_file = save_results(proj_root, args, evaluated_block)
 
-    print(f"✔ Results saved to: {out_file}")
+    # print(f"✔ Results saved to: {out_file}")
     print(result.stdout)
 
     sys.exit(result.returncode)

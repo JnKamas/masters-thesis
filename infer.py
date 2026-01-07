@@ -161,9 +161,10 @@ def infer(args, export_to_folder=True):
                 if os.path.exists(orig):
                     copyfile(orig, os.path.join(dst, os.path.basename(txt_path)))
 
-                # save prediction
-                out_file = os.path.join(dst, txt_name)
-                np.savetxt(out_file, transform.T.ravel(), fmt='%1.6f', newline=' ')
+                # save prediction only if its non bayesian / mc
+                if args.modifications not in {"mc_dropout", "bayesian", "ensemble_mc_dropout"}:
+                    out_file = os.path.join(dst, txt_name)
+                    np.savetxt(out_file, transform.T.ravel(), fmt='%1.6f', newline=' ')
 
 if __name__ == '__main__':
     """
