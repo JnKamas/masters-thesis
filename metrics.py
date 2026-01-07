@@ -168,6 +168,7 @@ def compute_ece_rotation(all_preds_R, all_gts_R, n_bins=10):
         ece += (nb/N) * abs(errs[mask].mean() - sigmas[mask].mean())
     return float(ece)
 
+# This is oversimplified NLL for rotation, assuming Gaussian over geodesic angle errors.
 def compute_nll_rotation(all_preds_R, all_gts_R):
     from scipy.spatial.transform import Rotation as sciR
     nlls = []
@@ -260,41 +261,6 @@ def _best_symmetry_gt_for_rotation(R_mean, gt_R1, gt_R2):
     d2 = geodesic_distance(R_mean, gt_R2)
     return gt_R1 if d1 <= d2 else gt_R2
 
-def compute_ucs_rotation_rodrigues(all_preds_R, all_gts_R, p_grid=None):
-    """
-    UCS for rotation using Rodrigues (axis-angle) 3D representation, per-dimension and macro.
-    For each sample:
-      1) Choose the GT (gt_R1 or gt_R2) closer to mean to handle the 180° symmetry.
-      2) Convert MC samples to rotvecs (Rodrigues).
-      3) Compute Gaussian(mu, sigma) per component vs GT rotvec component -> PITs.
-    Returns: macro_ucs, [ucs_rx, ucs_ry, ucs_rz]
-    """
-    pits = [[], [], []]  # rx, ry, rz
-
-    for Rs, gt_R1 in zip(all_preds_R, all_gts_R):
-        R_mean = mean_rotation_SVD(Rs)
-        # second symmetry for 180° around principal axis (your earlier convention)
-        gt_R2 = np.matrix.copy(gt_R1)
-        gt_R2[:, :2] *= -1
-        gt_R = _best_symmetry_gt_for_rotation(R_mean, gt_R1, gt_R2)
-
-        # rotvecs
-        rotvecs = sciR.from_matrix(Rs).as_rotvec()  # [K,3]
-        mu = rotvecs.mean(axis=0)
-        std = rotvecs.std(axis=0) + 1e-9
-
-        gt_vec = sciR.from_matrix(gt_R).as_rotvec()  # [3]
-
-        for d in range(3):
-            u = _pit_from_gaussian_1d(gt_vec[d], mu[d], std[d])
-            pits[d].append(u)
-
-    ucs_dims = []
-    for d in range(3):
-        _, _, ucs_d = _reliability_and_ucs_from_pit(pits[d], p_grid=p_grid)
-        ucs_dims.append(ucs_d)
-
-    return float(np.mean(ucs_dims)), ucs_dims
 
 def compute_ucs_rotation_geodesic(all_preds_R, all_gts_R, p_grid=None):
     """

@@ -243,7 +243,7 @@ def evaluate(args):
     ece_R = compute_ece_rotation(all_preds_R, all_gts_R)
     sharp_R = compute_sharpness_rotation(all_preds_R, all_gts_R)
 
-    print(f"Rotation NLL: {nll_R:.4f}")
+    print(f"Rotation NLL, using Gaussian on Error angles: {nll_R:.4f}")
     print(f"Rotation ECE: {ece_R:.4f} rad / {np.degrees(ece_R):.2f}°")
     print(f"Rotation Sharpness: {sharp_R:.4f} rad / {np.degrees(sharp_R):.2f}°")
 
@@ -264,10 +264,6 @@ def evaluate(args):
     ucs_t_macro, ucs_t_dims = compute_ucs_translation(all_preds_t, all_gts_t, p_grid=np.linspace(0.1,1.0,10))
     print("\nUCS (Translation) 0..1 ↑ (higher is better)")
     print(f" Translation UCS (macro): {ucs_t_macro:.3f} | per-axis: x={ucs_t_dims[0]:.3f}, y={ucs_t_dims[1]:.3f}, z={ucs_t_dims[2]:.3f}")
-    # --- UCS for Rotation (Rodrigues per-dimension) ---
-    ucs_r_macro, ucs_r_dims = compute_ucs_rotation_rodrigues(all_preds_R, all_gts_R, p_grid=np.linspace(0.1,1.0,10))
-    print("\nUCS (Rotation, Rodrigues components) 0..1 ↑")
-    print(f" Rotation UCS (macro):  {ucs_r_macro:.3f} | rx={ucs_r_dims[0]:.3f}, ry={ucs_r_dims[1]:.3f}, rz={ucs_r_dims[2]:.3f}")
     # --- UCS for Rotation: geodesic angle (single scalar) ---
     ucs_r_angle = compute_ucs_rotation_geodesic(all_preds_R, all_gts_R, p_grid=np.linspace(0.1,1.0,10))
     print("\nUCS (Rotation, geodesic angle) 0..1 ↑")
@@ -338,7 +334,7 @@ def evaluate(args):
                 "rad": mean_ang_err,
                 "deg": float(np.degrees(mean_ang_err)),
             },
-            "nll": nll_R,
+            "nll on angle errors": nll_R,
             "ece": {
                 "rad": ece_R,
                 "deg": float(np.degrees(ece_R)),
@@ -357,10 +353,6 @@ def evaluate(args):
             "translation": {
                 "macro": ucs_t_macro,
                 "per_dim": ucs_t_dims,
-            },
-            "rotation_rodrigues": {
-                "macro": ucs_r_macro,
-                "per_dim": ucs_r_dims,
             },
             "rotation_geodesic": ucs_r_angle,
         },
