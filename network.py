@@ -107,6 +107,18 @@ class Network(nn.Module):
                 nn.LeakyReLU(),
                 BayesianLinear(64, 3),
             )
+        
+        def make_concentration_head(p=0.0):
+            return nn.Sequential(
+                nn.Linear(last_feat, 128),
+                nn.LeakyReLU(),
+                nn.Dropout(p),
+                nn.Linear(128, 64),
+                nn.LeakyReLU(),
+                nn.Dropout(p),
+                nn.Linear(64, 3),
+                nn.Softplus()  # e  nsures positivity
+            )
 
         if args.modifications == "mc_dropout":
             self.fc_z = make_dropout_head(self.p_rot)
@@ -120,6 +132,10 @@ class Network(nn.Module):
             self.fc_z = make_head(0.0)
             self.fc_y = make_head(0.0)
             self.fc_t = make_head(0.0)
+        
+        # Concentration heads (for Matrix-Fisher distribution)
+        self.fc_kappa = make_concentration_head(0.0)
+
 
     # ------------------------------------------------------------
     # Forward
@@ -133,5 +149,6 @@ class Network(nn.Module):
         z = self.fc_z(x)
         y = self.fc_y(x)
         t = self.fc_t(x)
+        kappa = self.fc_kappa(x)
 
-        return z, y, t
+        return z, y, t, kappa

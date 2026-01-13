@@ -15,6 +15,33 @@ from torch.utils.data import DataLoader
 from network_helpers import normalized_l2_loss, parse_command_line, load_model
 from dataset import Dataset
 
+def build_rotation_from_yz(y, z, eps=1e-8):
+    z = z / (torch.norm(z, dim=1, keepdim=True) + eps)
+    y = y - torch.sum(y * z, dim=1, keepdim=True) * z
+    y = y / (torch.norm(y, dim=1, keepdim=True) + eps)
+    x = torch.cross(y, z, dim=1)
+    return torch.stack([x, y, z], dim=2)
+
+def matrix_fisher_nll(R_pred, R_gt, kappa, eps=1e-8):
+    # ---- HARD SAFETY (required with approx normalizer) ----
+    kappa = torch.clamp(kappa, min=1e-3, max=50.0)
+
+    R_err = torch.matmul(R_pred.transpose(-1, -2), R_gt)
+
+    align = (
+        kappa[:, 0] * R_err[:, 0, 0] +
+        kappa[:, 1] * R_err[:, 1, 1] +
+        kappa[:, 2] * R_err[:, 2, 2]
+    )
+
+    kappa_bar = torch.mean(kappa, dim=1)
+
+    # weak but stable normalizer
+    log_c = torch.log(kappa_bar + eps) - kappa_bar
+
+    return torch.mean(-align + log_c)
+
+
 
 def get_angles(pred, gt, sym_inv: bool = False, eps: float = 1e-7) -> torch.Tensor:
     """
@@ -101,6 +128,7 @@ def train(args):
     optimizer = torch.optim.Adam(model.parameters(), lr=args.learning_rate)
 
     loss_running = 0.0
+    loss_rot_running = 0.0
     loss_t_running = 0.0
     loss_z_running = 0.0
     loss_y_running = 0.0
@@ -150,25 +178,37 @@ def train(args):
                 # Deterministic / MC-Dropout mode
                 pred_z, pred_y, pred_t, pred_kappa = model(xyz)
 
-                # Angle loss is used for rotational components.
-                loss_z = torch.mean(get_angles(pred_z, gt_z))
-                # If you want symmetry for y-axis, re-enable sym_inv=True.
-                loss_y = torch.mean(get_angles(pred_y, gt_y))
-                # If you want normalized L2 instead, replace with normalized_l2_loss.
-                loss_t = args.weight * l1_loss(pred_t, gt_t)
-                loss = loss_z + loss_y + loss_t
+                # Original Loss:
+                # # Angle loss is used for rotational components.
+                # loss_z = torch.mean(get_angles(pred_z, gt_z))
+                # # If you want symmetry for y-axis, re-enable sym_inv=True.
+                # loss_y = torch.mean(get_angles(pred_y, gt_y))
+                # # If you want normalized L2 instead, replace with normalized_l2_loss.
+                # loss_t = args.weight * l1_loss(pred_t, gt_t)
+                # loss = loss_z + loss_y + loss_t
 
-            # Note: running loss calc makes loss increase in the beginning of training!
-            loss_z_running = 0.9 * loss_z_running + 0.1 * loss_z.item()
-            loss_y_running = 0.9 * loss_y_running + 0.1 * loss_y.item()
-            loss_t_running = 0.9 * loss_t_running + 0.1 * loss_t.item()
-            loss_running = 0.9 * loss_running + 0.1 * loss.item()
+                # Loss that supports Matrix-Fisher rotation with concentration (translation unchanged):
+                R_pred = build_rotation_from_yz(pred_y, pred_z)
+                R_gt   = sample["bin_transform"][:, :3, :3].to(device)
+
+                loss_rot = matrix_fisher_nll(R_pred, R_gt, pred_kappa)
+                loss_t   = args.weight * l1_loss(pred_t, gt_t)
+
+                loss = loss_rot + loss_t
+
+            # Running averages (true training losses)
+            loss_rot_running = 0.9 * loss_rot_running + 0.1 * loss_rot.item()
+            loss_t_running   = 0.9 * loss_t_running   + 0.1 * loss_t.item()
+            loss_running     = 0.9 * loss_running     + 0.1 * loss.item()
+
+            # Optional diagnostics
+            kappa_mean = pred_kappa.mean().item()
 
             print(
                 f"Running loss: {loss_running:.6f}, "
-                f"z loss: {loss_z_running:.6f}, "
-                f"y loss: {loss_y_running:.6f}, "
-                f"t loss: {loss_t_running:.6f}"
+                f"rot NLL: {loss_rot_running:.6f}, "
+                f"t loss: {loss_t_running:.6f}, "
+                f"kappa_mean: {kappa_mean:.3f}"
             )
 
             loss.backward()
@@ -181,19 +221,20 @@ def train(args):
         # ---------------------------------------------------------------------
         model.eval()
         with torch.no_grad():
-            val_losses = []
-            val_losses_t = []
-            val_losses_z = []
-            val_losses_y = []
+            val_losses = []          # total objective
+            val_losses_rot = []      # Matrix Fisher NLL
+            val_losses_t = []        # translation
+            val_angle_z = []         # metrics only
+            val_angle_y = []
 
             for sample in val_loader:
                 xyz = sample["xyz"].to(device)
-                gt_z = sample["bin_transform"][:, :3, 2].to(device)
-                gt_y = sample["bin_transform"][:, :3, 1].to(device)
+                R_gt = sample["bin_transform"][:, :3, :3].to(device)
+                gt_z = R_gt[:, :, 2]
+                gt_y = R_gt[:, :, 1]
                 gt_t = sample["bin_translation"].to(device)
 
                 if is_bayesian:
-                    # Simple MC averaging at validation (3 samples).
                     preds = [model(xyz) for _ in range(3)]
                     pred_z = torch.mean(torch.stack([p[0] for p in preds]), dim=0)
                     pred_y = torch.mean(torch.stack([p[1] for p in preds]), dim=0)
@@ -202,41 +243,43 @@ def train(args):
                 else:
                     pred_z, pred_y, pred_t, pred_kappa = model(xyz)
 
-                loss_z = torch.mean(get_angles(pred_z, gt_z))
-                # In eval you had sym_inv=True originally for y-axis; kept that here.
-                loss_y = torch.mean(get_angles(pred_y, gt_y, sym_inv=True))
-                # loss_t = normalized_l2_loss(pred_t, gt_t)
+                # ---- objective losses ----
+                R_pred = build_rotation_from_yz(pred_y, pred_z)
+                loss_rot = matrix_fisher_nll(R_pred, R_gt, pred_kappa)
                 loss_t = args.weight * l1_loss(pred_t, gt_t)
-                loss = loss_z + loss_y + loss_t
+                loss = loss_rot + loss_t
+
+                # ---- metrics (angles) ----
+                angle_z = torch.mean(get_angles(pred_z, gt_z))
+                angle_y = torch.mean(get_angles(pred_y, gt_y, sym_inv=True))
 
                 val_losses.append(loss.item())
+                val_losses_rot.append(loss_rot.item())
                 val_losses_t.append(loss_t.item())
-                val_losses_z.append(loss_z.item())
-                val_losses_y.append(loss_y.item())
+                val_angle_z.append(angle_z.item())
+                val_angle_y.append(angle_y.item())
 
             print(20 * "*")
             print(f"Epoch {e}/{args.epochs}")
             print(
-                "means - \t val loss: {:.6f} \t z loss: {:.6f} \t y loss: {:.6f} \t t loss: {:.6f}".format(
-                    np.mean(val_losses),
-                    np.mean(val_losses_z),
-                    np.mean(val_losses_y),
-                    np.mean(val_losses_t),
-                )
+                "means - "
+                f"val loss: {np.mean(val_losses):.6f}, "
+                f"rot NLL: {np.mean(val_losses_rot):.6f}, "
+                f"t loss: {np.mean(val_losses_t):.6f}, "
+                f"angle z: {np.mean(val_angle_z):.4f}, "
+                f"angle y: {np.mean(val_angle_y):.4f}"
             )
             print(
-                "medians - \t val loss: {:.6f} \t z loss: {:.6f} \t y loss: {:.6f} \t t loss: {:.6f}".format(
-                    np.median(val_losses),
-                    np.median(val_losses_z),
-                    np.median(val_losses_y),
-                    np.median(val_losses_t),
-                )
+                "medians - "
+                f"val loss: {np.median(val_losses):.6f}, "
+                f"rot NLL: {np.median(val_losses_rot):.6f}, "
+                f"t loss: {np.median(val_losses_t):.6f}, "
+                f"angle z: {np.median(val_angle_z):.4f}, "
+                f"angle y: {np.median(val_angle_y):.4f}"
             )
 
-            import psutil
-            print(f"Epoch {e} RAM: {psutil.Process(os.getpid()).memory_info().rss // (1024 * 1024)} MB")
-
             val_loss_all.append(np.mean(val_losses))
+
 
         # ---------------------------------------------------------------------
         # Checkpoints & logging

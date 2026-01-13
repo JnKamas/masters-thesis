@@ -15,17 +15,73 @@ from metrics import *
 
 warnings.filterwarnings("ignore", category=RuntimeWarning)
 
+# presun do druheho suboru
+def matrix_fisher_nll(R_pred, R_gt, kappa, eps=1e-8):
+    """
+    Matrix–Fisher negative log-likelihood on SO(3).
+
+    Args:
+        R_pred : (3,3) predicted rotation matrix
+        R_gt   : (3,3) ground-truth rotation matrix
+        kappa  : (3,) concentration parameters (must be >= 0)
+
+    Returns:
+        nll : float
+    """
+
+    # rotation error
+    R_err = R_pred.T @ R_gt
+
+    # alignment term
+    align = (
+        kappa[0] * R_err[0, 0] +
+        kappa[1] * R_err[1, 1] +
+        kappa[2] * R_err[2, 2]
+    )
+
+    # normalization constant (stable isotropic approx)
+    kappa_bar = np.mean(kappa)
+    log_c = np.log(kappa_bar + eps) - kappa_bar
+
+    # negative log-likelihood
+    return -align + log_c
+
+def read_kappa_from_prediction_file(txt_path):
+    """
+    Reads kappa_x kappa_y kappa_z from the prediction txt file.
+    Assumes kappa is stored as the last numeric line after a comment.
+    """
+    with open(txt_path, "r") as f:
+        lines = f.readlines()
+
+    for line in reversed(lines):
+        line = line.strip()
+        if not line or line.startswith("#"):
+            continue
+        parts = line.split()
+        if len(parts) == 3:
+            try:
+                return np.array([float(p) for p in parts], dtype=np.float32)
+            except ValueError:
+                pass
+    return None
+
 def get_mc_predictions(path, number, mc_samples):
-    Rs, ts = [], []
+    Rs, ts, kappas = [], [], []
     for i in range(mc_samples):
         fname = f'prediction{i}_scan_{number}.txt'
         fpath = os.path.join(path, fname)
         if not os.path.isfile(fpath):
-            return None, None
+            return None, None, None
+
         R, t = read_transform_file(fpath)
+        kappa = read_kappa_from_prediction_file(fpath)
+
         Rs.append(R)
         ts.append(t)
-    return np.stack(Rs), np.stack(ts)
+        kappas.append(kappa)
+
+    return np.stack(Rs), np.stack(ts), np.stack(kappas)
 
 def evaluate(args):
     print(args.path)
@@ -47,6 +103,8 @@ def evaluate(args):
     all_gts_t = []
     all_gts_R = []
 
+    all_kappas = []        # list of (N_mc, 3)
+    all_kappa_means = []  # per sample
 
     coverage_t = np.zeros(3)
     coverage_pred_t = np.zeros(3)
@@ -68,7 +126,10 @@ def evaluate(args):
         number = gt_file[index + 1:-4]
 
         if args.modifications in {"mc_dropout", "bayesian", "ensemble", "ensemble_mc_dropout"}:
-            Rs, ts = get_mc_predictions(path, number, args.mc_samples)
+            Rs, ts, kappas = get_mc_predictions(path, number, args.mc_samples)
+            all_kappas.append(kappas)
+            all_kappa_means.append(np.mean(kappas, axis=0))  # (3,)
+
             if Rs is None:
                 print(f"Some samples missing for {number}, skipping.")
                 continue
@@ -82,8 +143,14 @@ def evaluate(args):
                     continue
 
             pr_R, pr_t = read_transform_file(os.path.join(path, pr_file))
+            kappa = read_kappa_from_prediction_file(os.path.join(path, pr_file))
+
             Rs = np.expand_dims(pr_R, 0)
             ts = np.expand_dims(pr_t, 0)
+            kappas = np.expand_dims(kappa, 0)
+
+            all_kappas.append(kappas)
+            all_kappa_means.append(kappa)
 
         # ---- shared logic (already exists) ----
         mean_t = np.mean(ts, axis=0)
@@ -248,6 +315,7 @@ def evaluate(args):
     print(f"Rotation Sharpness: {sharp_R:.4f} rad / {np.degrees(sharp_R):.2f}°")
 
 
+
     # print("Rotation Uncertainty Metrics:")
     # print(f" Mean Sample Spread:          {np.mean(spread_list):.4f} rad / {np.degrees(np.mean(spread_list)):.2f}°")
     # print(f" Mean Δ_orth: {np.mean(orth_dev_list):.6f}")
@@ -269,6 +337,18 @@ def evaluate(args):
     print("\nUCS (Rotation, geodesic angle) 0..1 ↑")
     print(f" Rotation UCS (angle): {ucs_r_angle:.3f}")
 
+    all_kappa_means_arr = np.stack(all_kappa_means)
+
+    print("\n=== KAPPA PLACEHOLDER STATS ===")
+    print(f"Mean κx κy κz: {np.mean(all_kappa_means_arr, axis=0)}")
+    print(f"Std  κx κy κz: {np.std(all_kappa_means_arr, axis=0)}")
+
+    nlls = []
+    for r, k in zip(rots, kappas):
+        nlls.append(matrix_fisher_nll(r, gt_R1, k))
+
+    rotation_nll = float(np.mean(nlls))
+    print(f"Mean Rotation NLL (Matrix-Fisher): {rotation_nll:.4f}")
 
     print("\n=== END ===")
 
@@ -356,6 +436,12 @@ def evaluate(args):
             },
             "rotation_geodesic": ucs_r_angle,
         },
+        "aleatoric_uncertainty": {
+        "kappa_mean_xyz": np.mean(all_kappa_means_arr, axis=0).tolist(),
+        "kappa_std_xyz": np.std(all_kappa_means_arr, axis=0).tolist(),
+        "note": "Placeholders only. Metrics not yet computed."
+        }
+
     }
 
     final_json = {

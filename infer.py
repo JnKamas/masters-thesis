@@ -82,10 +82,11 @@ def infer(args, export_to_folder=True):
             # Monte Carlo / Bayesian branch
             if args.modifications in {"mc_dropout", "bayesian", "ensemble_mc_dropout"}:
                 for mc_idx in range(args.mc_samples):
-                    z, y, t = model(sample['xyz'].cuda())
+                    z, y, t, kappa = model(sample['xyz'].cuda())
                     pred_zs = z.cpu().numpy()
                     pred_ys = y.cpu().numpy()
                     pred_ts = t.cpu().numpy()
+                    pred_kappas = kappa.cpu().numpy()
 
                     for i in range(len(pred_zs)):
                         # build orthonormal basis
@@ -94,6 +95,7 @@ def infer(args, export_to_folder=True):
                         y_i -= np.dot(z_i, y_i) * z_i
                         y_i /= np.linalg.norm(y_i)
                         x_i = np.cross(y_i, z_i)
+                        kappa_i = pred_kappas[i]  # (3,)
 
                         transform = np.zeros((4,4), dtype=np.float32)
                         transform[:3,0] = x_i
@@ -111,14 +113,30 @@ def infer(args, export_to_folder=True):
                         dst = os.path.join(export_root, subdir)
                         os.makedirs(dst, exist_ok=True)
                         out_file = os.path.join(dst, txt_name)
-                        np.savetxt(out_file, transform.T.ravel(), fmt='%1.6f', newline=' ')
+                        with open(out_file, "w") as f:
+                            # write pose (same format as before)
+                            np.savetxt(
+                                f,
+                                transform.T.ravel()[None, :],
+                                fmt="%1.6f",
+                                newline=" "
+                            )
+                            f.write("\n")
+                            # append kappa
+                            f.write(
+                                "# kappa_x kappa_y kappa_z\n"
+                                f"{kappa_i[0]:.6f} {kappa_i[1]:.6f} {kappa_i[2]:.6f}\n"
+                            )
 
             else:
                 # single deterministic pass
-                pred_zs, pred_ys, pred_ts = model(sample['xyz'].cuda())
-                pred_zs = pred_zs.cpu().numpy()
-                pred_ys = pred_ys.cpu().numpy()
-                pred_ts = pred_ts.cpu().numpy()
+                z, y, t, kappa = model(sample['xyz'].cuda())
+
+                pred_zs = z.cpu().numpy()
+                pred_ys = y.cpu().numpy()
+                pred_ts = t.cpu().numpy()
+                pred_kappas = kappa.cpu().numpy()
+
 
             gt_transforms = sample['orig_transform']
 
@@ -130,6 +148,8 @@ def infer(args, export_to_folder=True):
                 y -= np.dot(z,y)*z
                 y /= np.linalg.norm(y)
                 x = np.cross(y, z)
+                kappa_i = pred_kappas[i]  # (3,)
+
 
                 transform = np.zeros((4,4), dtype=np.float32)
                 transform[:3,0] = x
@@ -164,7 +184,22 @@ def infer(args, export_to_folder=True):
                 # save prediction only if its non bayesian / mc
                 if args.modifications not in {"mc_dropout", "bayesian", "ensemble_mc_dropout"}:
                     out_file = os.path.join(dst, txt_name)
-                    np.savetxt(out_file, transform.T.ravel(), fmt='%1.6f', newline=' ')
+                    kappa_i = pred_kappas[i]  # (3,)
+
+                    with open(out_file, "w") as f:
+                        # pose
+                        np.savetxt(
+                            f,
+                            transform.T.ravel()[None, :],
+                            fmt="%1.6f",
+                            newline=" "
+                        )
+                        f.write("\n")
+                        # kappa
+                        f.write(
+                            "# kappa_x kappa_y kappa_z\n"
+                            f"{kappa_i[0]:.6f} {kappa_i[1]:.6f} {kappa_i[2]:.6f}\n"
+                        )
 
 if __name__ == '__main__':
     """
