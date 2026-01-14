@@ -63,7 +63,7 @@ def infer(args, export_to_folder=True):
         if args.modifications in ["mc_dropout", "ensemble_mc_dropout"]:
             enable_dropout(model)
 
-        PRINT_PREDS = False   # <-- set True if you want to print GT + predictions
+        PRINT_PREDS = False   # <-- set True to print GT + predictions
 
         progress = tqdm(
             val_loader,
@@ -174,7 +174,7 @@ def infer(args, export_to_folder=True):
                 txt_name = f'prediction_{os.path.basename(txt_path)}'
                 subdir   = os.path.dirname(txt_path)
 
-                # copy original scan if you like
+                # copy original scan
                 dst = os.path.join(export_root, subdir)
                 os.makedirs(dst, exist_ok=True)
                 orig = os.path.join(dir_path, txt_path)

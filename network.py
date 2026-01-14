@@ -38,9 +38,6 @@ class Network(nn.Module):
         self.p_rot = getattr(args, "dropout_prob_rot", args.dropout_prob)
         self.p_trans = getattr(args, "dropout_prob_trans", args.dropout_prob)
 
-        # ------------------------------------------------------------
-        # Load ResNet exactly as paper (Figure 3)
-        # ------------------------------------------------------------
         if args.backbone == 'resnet18':
             backbone = resnet18(weights=ResNet18_Weights.DEFAULT)
         elif args.backbone == 'resnet34':
@@ -117,7 +114,7 @@ class Network(nn.Module):
                 nn.LeakyReLU(),
                 nn.Dropout(p),
                 nn.Linear(64, 3),
-                nn.Softplus()  # e  nsures positivity
+                nn.Softplus()  # ensures positivity
             )
 
         if args.modifications == "mc_dropout":

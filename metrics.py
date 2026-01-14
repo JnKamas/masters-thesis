@@ -1,3 +1,7 @@
+'''
+I integrated here many metrics, but only some of them are use in the thesis
+'''
+
 import argparse
 import glob
 import os
@@ -132,22 +136,20 @@ def compute_sharpness_translation(all_preds_t):
     sharpness_dims = np.mean(stds, axis=0)
     return float(sharpness_vec), sharpness_dims
 
-def compute_sharpness_rotation(all_preds_R, all_gts_R):
+def compute_sharpness_rotation(all_preds_R, all_gts_R=None):
     """
     Computes average predicted rotation uncertainty (radians).
     all_preds_R: list of np.arrays, each [K, 3x3]
-    all_gts_R: list of 3x3 GT rotations
+    all_gts_R: obsolete. TODO remove from flows that call this
     """
-    from scipy.spatial.transform import Rotation as sciR
     sharp_list = []
-    for Rs, Rgt in zip(all_preds_R, all_gts_R):
+    for Rs in zip(all_preds_R):
         mean_R = mean_rotation_SVD(Rs)
-        errs = [np.arccos(np.clip((np.trace(Rgt.T @ R) - 1) / 2, -1, 1)) for R in Rs]
+        errs = [np.arccos(np.clip((np.trace(mean_R.T @ R) - 1) / 2, -1, 1)) for R in Rs]
         sharp_list.append(np.std(errs))
     return float(np.mean(sharp_list))
     
 def compute_ece_rotation(all_preds_R, all_gts_R, n_bins=10):
-    from scipy.spatial.transform import Rotation as sciR
     errs, sigmas = [], []
     for Rs, Rgt in zip(all_preds_R, all_gts_R):
         mean_R = mean_rotation_SVD(Rs)
@@ -170,7 +172,6 @@ def compute_ece_rotation(all_preds_R, all_gts_R, n_bins=10):
 
 # This is oversimplified NLL for rotation, assuming Gaussian over geodesic angle errors.
 def compute_nll_rotation(all_preds_R, all_gts_R):
-    from scipy.spatial.transform import Rotation as sciR
     nlls = []
     for Rs, Rgt in zip(all_preds_R, all_gts_R):
         mean_R = mean_rotation_SVD(Rs)

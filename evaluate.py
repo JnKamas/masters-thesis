@@ -15,7 +15,7 @@ from metrics import *
 
 warnings.filterwarnings("ignore", category=RuntimeWarning)
 
-# presun do druheho suboru
+# presun toto neskor  do druheho suboru
 def matrix_fisher_nll(R_pred, R_gt, kappa, eps=1e-8):
     """
     Matrix–Fisher negative log-likelihood on SO(3).
