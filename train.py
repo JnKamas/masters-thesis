@@ -176,7 +176,7 @@ def train(args):
 
             else:
                 # Deterministic / MC-Dropout mode
-                pred_z, pred_y, pred_t, pred_kappa = model(xyz)
+                pred_z, pred_y, pred_t, pred_kappa, pred_sigma_t = model(xyz)
 
                 # Original Loss:
                 # # Angle loss is used for rotational components.
@@ -192,7 +192,12 @@ def train(args):
                 R_gt   = sample["bin_transform"][:, :3, :3].to(device)
 
                 loss_rot = matrix_fisher_nll(R_pred, R_gt, pred_kappa)
-                loss_t   = args.weight * l1_loss(pred_t, gt_t)
+
+                # ---- Gaussian NLL for translation ----
+                pred_sigma_t = torch.clamp(pred_sigma_t, min=1e-3, max=1.0)
+                var = pred_sigma_t**2 + 1e-6
+                loss_t = 0.5 * (torch.log(var) + (gt_t - pred_t)**2 / var)
+                loss_t = args.weight * loss_t.mean()
 
                 loss = loss_rot + loss_t
 
@@ -240,13 +245,19 @@ def train(args):
                     pred_y = torch.mean(torch.stack([p[1] for p in preds]), dim=0)
                     pred_t = torch.mean(torch.stack([p[2] for p in preds]), dim=0)
                     pred_kappa = torch.mean(torch.stack([p[3] for p in preds]), dim=0)
+                    pred_sigma_t = torch.mean(torch.stack([p[4] for p in preds]), dim=0)
                 else:
-                    pred_z, pred_y, pred_t, pred_kappa = model(xyz)
+                    pred_z, pred_y, pred_t, pred_kappa, pred_sigma_t = model(xyz)
 
                 # ---- objective losses ----
                 R_pred = build_rotation_from_yz(pred_y, pred_z)
                 loss_rot = matrix_fisher_nll(R_pred, R_gt, pred_kappa)
-                loss_t = args.weight * l1_loss(pred_t, gt_t)
+                # loss_t = args.weight * l1_loss(pred_t, gt_t)
+                eps = 1e-6
+                pred_sigma_t = torch.clamp(pred_sigma_t, min=1e-3, max=1.0)
+                var = pred_sigma_t**2 + eps
+                loss_t = 0.5 * (torch.log(var) + (gt_t - pred_t)**2 / var)
+                loss_t = args.weight * loss_t.mean()
                 loss = loss_rot + loss_t
 
                 # ---- metrics (angles) ----

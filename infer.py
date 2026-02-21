@@ -82,11 +82,12 @@ def infer(args, export_to_folder=True):
             # Monte Carlo / Bayesian branch
             if args.modifications in {"mc_dropout", "bayesian", "ensemble_mc_dropout"}:
                 for mc_idx in range(args.mc_samples):
-                    z, y, t, kappa = model(sample['xyz'].cuda())
+                    z, y, t, kappa, sigma_t = model(sample['xyz'].cuda())
                     pred_zs = z.cpu().numpy()
                     pred_ys = y.cpu().numpy()
                     pred_ts = t.cpu().numpy()
                     pred_kappas = kappa.cpu().numpy()
+                    pred_sigma_ts = sigma_t.cpu().numpy()
 
                     for i in range(len(pred_zs)):
                         # build orthonormal basis
@@ -127,15 +128,21 @@ def infer(args, export_to_folder=True):
                                 "# kappa_x kappa_y kappa_z\n"
                                 f"{kappa_i[0]:.6f} {kappa_i[1]:.6f} {kappa_i[2]:.6f}\n"
                             )
+                            sigma_i = pred_sigma_ts[i]
+                            f.write(
+                                "# sigma_tx sigma_ty sigma_tz\n"
+                                f"{sigma_i[0]:.6f} {sigma_i[1]:.6f} {sigma_i[2]:.6f}\n"
+                            )
 
             else:
                 # single deterministic pass
-                z, y, t, kappa = model(sample['xyz'].cuda())
+                pred_z, pred_y, pred_t, pred_kappa, pred_sigma_t = model(sample['xyz'].cuda())
 
-                pred_zs = z.cpu().numpy()
-                pred_ys = y.cpu().numpy()
-                pred_ts = t.cpu().numpy()
-                pred_kappas = kappa.cpu().numpy()
+                pred_zs = pred_z.cpu().numpy()
+                pred_ys = pred_y.cpu().numpy()
+                pred_ts = pred_t.cpu().numpy()
+                pred_kappas = pred_kappa.cpu().numpy()
+                pred_sigma_ts = pred_sigma_t.cpu().numpy()
 
 
             gt_transforms = sample['orig_transform']
@@ -199,6 +206,11 @@ def infer(args, export_to_folder=True):
                         f.write(
                             "# kappa_x kappa_y kappa_z\n"
                             f"{kappa_i[0]:.6f} {kappa_i[1]:.6f} {kappa_i[2]:.6f}\n"
+                        )
+                        sigma_i = pred_sigma_ts[i]
+                        f.write(
+                            "# sigma_tx sigma_ty sigma_tz\n"
+                            f"{sigma_i[0]:.6f} {sigma_i[1]:.6f} {sigma_i[2]:.6f}\n"
                         )
 
 if __name__ == '__main__':

@@ -11,7 +11,7 @@ from scipy.linalg import logm, svd
 from scipy.spatial.transform import Rotation as sciR
 
 def calculate_eTE(gt_t, pr_t):
-    return np.linalg.norm((pr_t - gt_t), ord=2) / 10
+    return np.linalg.norm((pr_t - gt_t), ord=2) / 10 # convert mm to cm
 
 def calculate_eRE(gt_R, pr_R):
     numerator = np.trace(np.matmul(gt_R, np.linalg.inv(pr_R))) - 1
@@ -143,7 +143,7 @@ def compute_sharpness_rotation(all_preds_R, all_gts_R=None):
     all_gts_R: obsolete. TODO remove from flows that call this
     """
     sharp_list = []
-    for Rs in zip(all_preds_R):
+    for Rs in all_preds_R:
         mean_R = mean_rotation_SVD(Rs)
         errs = [np.arccos(np.clip((np.trace(mean_R.T @ R) - 1) / 2, -1, 1)) for R in Rs]
         sharp_list.append(np.std(errs))
@@ -170,18 +170,38 @@ def compute_ece_rotation(all_preds_R, all_gts_R, n_bins=10):
         ece += (nb/N) * abs(errs[mask].mean() - sigmas[mask].mean())
     return float(ece)
 
-# This is oversimplified NLL for rotation, assuming Gaussian over geodesic angle errors.
-def compute_nll_rotation(all_preds_R, all_gts_R):
-    nlls = []
-    for Rs, Rgt in zip(all_preds_R, all_gts_R):
-        mean_R = mean_rotation_SVD(Rs)
-        eR_mean = np.arccos(np.clip((np.trace(Rgt.T @ mean_R) - 1) / 2, -1, 1))
-        eR_samples = [np.arccos(np.clip((np.trace(Rgt.T @ R) - 1) / 2, -1, 1)) for R in Rs]
-        mu, sigma = np.mean(eR_samples), np.std(eR_samples) + 1e-8
-        nll = 0.5 * (((eR_mean - mu)**2) / (sigma**2) + np.log(sigma**2) + np.log(2*np.pi))
-        nlls.append(nll)
-    return np.mean(nlls)
+# ChatGPT says this: We use a simplified isotropic approximation of the normalization constant.
+# Still requires more reserch, but we are very close.
+def matrix_fisher_nll(R_pred, R_gt, kappa, eps=1e-8):
+    """
+    Matrix–Fisher negative log-likelihood on SO(3).
+    Simplification as Isotropic (kappa1=kappa2=kappa3) for stable normalization constant.
+    Can be extended as anisotropic with more complex C(kappa) if needed. 
+    We use isotropic for epistepic and anisotropic for aleatoric, but this is a design choice that can be revisited.
 
+    Args:
+        R_pred : (3,3) predicted rotation matrix
+        R_gt   : (3,3) ground-truth rotation matrix
+        kappa  : (3,) concentration parameters (must be >= 0)
+
+    Returns:
+        nll : float
+    """
+
+    # enforce isotropy
+    k = float(np.mean(kappa))
+
+    # rotation error
+    R_err = R_pred.T @ R_gt
+
+    # isotropic alignment term
+    align = k * np.trace(R_err)
+
+    # approximate isotropic normalization constant
+    log_c = np.log(k + eps) - k
+
+    # NLL
+    return -align + log_c
 
 # ---- SO(3) Metrics Helper Functions ----
 
