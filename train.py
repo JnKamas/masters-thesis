@@ -86,7 +86,7 @@ def bayesian_combined_loss(args, preds, targets):
 
 
 def train(args):
-    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    device = torch.device("cuda:1" if torch.cuda.is_available() else "cpu")
     print(f"Using device: {device}")
 
     # load_model should construct the new Network(args) and move it to device,
