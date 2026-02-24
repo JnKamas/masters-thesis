@@ -42,7 +42,7 @@ def parse_command_line():
     parser.add_argument('-iw', '--input_width', type=int, default=256)
     parser.add_argument('-ih', '--input_height', type=int, default=256)
     parser.add_argument('-e', '--epochs', type=int, default=250)
-    parser.add_argument('-g', '--gpu', type=str, default='1')
+    parser.add_argument('-g', '--gpu', type=str, default='0')
     parser.add_argument('-bb', '--backbone', type=str, default='resnet18')
     parser.add_argument('-de', '--dump_every', type=int, default=0)
     parser.add_argument('-w', '--weight', type=float, default=0.1)
