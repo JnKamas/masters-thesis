@@ -9,6 +9,7 @@ import numpy as np
 from statistics import mean, median
 from scipy.linalg import logm, svd
 from scipy.spatial.transform import Rotation as sciR
+from scipy.special import iv
 
 def calculate_eTE(gt_t, pr_t):
     return np.linalg.norm((pr_t - gt_t), ord=2) / 10 # convert mm to cm
@@ -202,6 +203,12 @@ def matrix_fisher_nll(R_pred, R_gt, kappa, eps=1e-8):
 
     # NLL
     return -align + log_c
+
+    # # Correct isotropic normalization constant
+    # C = np.exp(k) / (2*np.pi) * (iv(0, k) - iv(1, k))
+    # logC = np.log(C + eps)
+
+    # return -align + logC
 
 # ---- SO(3) Metrics Helper Functions ----
 

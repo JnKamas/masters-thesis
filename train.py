@@ -179,31 +179,31 @@ def train(args):
                 pred_z, pred_y, pred_t, pred_kappa, pred_sigma_t = model(xyz)
 
                 # Original Loss:
-                # # Angle loss is used for rotational components.
-                # loss_z = torch.mean(get_angles(pred_z, gt_z))
-                # # If you want symmetry for y-axis, re-enable sym_inv=True.
-                # loss_y = torch.mean(get_angles(pred_y, gt_y))
-                # # If you want normalized L2 instead, replace with normalized_l2_loss.
-                # loss_t = args.weight * l1_loss(pred_t, gt_t)
-                # loss = loss_z + loss_y + loss_t
+                # Angle loss is used for rotational components.
+                loss_z = torch.mean(get_angles(pred_z, gt_z))
+                # If you want symmetry for y-axis, re-enable sym_inv=True.
+                loss_y = torch.mean(get_angles(pred_y, gt_y))
+                # If you want normalized L2 instead, replace with normalized_l2_loss.
+                loss_t = args.weight * l1_loss(pred_t, gt_t)
+                loss = loss_z + loss_y + loss_t
 
                 # Loss that supports Matrix-Fisher rotation with concentration (translation unchanged):
-                R_pred = build_rotation_from_yz(pred_y, pred_z)
-                R_gt   = sample["bin_transform"][:, :3, :3].to(device)
+                # R_pred = build_rotation_from_yz(pred_y, pred_z)
+                # R_gt   = sample["bin_transform"][:, :3, :3].to(device)
 
-                loss_rot = matrix_fisher_nll(R_pred, R_gt, pred_kappa)
+                # loss_rot = matrix_fisher_nll(R_pred, R_gt, pred_kappa)
 
-                # ---- Gaussian NLL for translation ----
-                pred_sigma_t = torch.clamp(pred_sigma_t, min=1e-3, max=1.0)
-                var = pred_sigma_t**2 + 1e-6
-                loss_t = 0.5 * (torch.log(var) + (gt_t - pred_t)**2 / var)
-                loss_t = args.weight * loss_t.mean()
+                # # ---- Gaussian NLL for translation ----
+                # pred_sigma_t = torch.clamp(pred_sigma_t, min=1e-3, max=1.0)
+                # var = pred_sigma_t**2 + 1e-6
+                # loss_t = 0.5 * (torch.log(var) + (gt_t - pred_t)**2 / var)
+                # loss_t = args.weight * loss_t.mean()
 
-                loss = loss_rot + loss_t
+                # loss = loss_rot + loss_t
 
-            # Running averages (true training losses)
-            loss_rot_running = 0.9 * loss_rot_running + 0.1 * loss_rot.item()
-            loss_t_running   = 0.9 * loss_t_running   + 0.1 * loss_t.item()
+            # # Running averages (true training losses)
+            # loss_rot_running = 0.9 * loss_rot_running + 0.1 * loss_rot.item()
+            # loss_t_running   = 0.9 * loss_t_running   + 0.1 * loss_t.item()
             loss_running     = 0.9 * loss_running     + 0.1 * loss.item()
 
             # Optional diagnostics
@@ -211,9 +211,9 @@ def train(args):
 
             print(
                 f"Running loss: {loss_running:.6f}, "
-                f"rot NLL: {loss_rot_running:.6f}, "
-                f"t loss: {loss_t_running:.6f}, "
-                f"kappa_mean: {kappa_mean:.3f}"
+                f"z loss: {loss_z:.6f}, "
+                f"y loss: {loss_y:.6f}, "
+                f"t loss: {loss_t:.6f}, "
             )
 
             loss.backward()
