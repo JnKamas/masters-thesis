@@ -7,14 +7,6 @@ from network import Network
 from network_helpers import normalized_l2_loss, parse_command_line, load_model
 from dataset import Dataset
 
-import os
-import numpy as np
-import torch
-from torch.utils.data import DataLoader
-
-from network_helpers import normalized_l2_loss, parse_command_line, load_model
-from dataset import Dataset
-
 def build_rotation_from_yz(y, z, eps=1e-8):
     z = z / (torch.norm(z, dim=1, keepdim=True) + eps)
     y = y - torch.sum(y * z, dim=1, keepdim=True) * z
@@ -22,25 +14,15 @@ def build_rotation_from_yz(y, z, eps=1e-8):
     x = torch.cross(y, z, dim=1)
     return torch.stack([x, y, z], dim=2)
 
-def matrix_fisher_nll(R_pred, R_gt, kappa, eps=1e-8):
-    # ---- HARD SAFETY (required with approx normalizer) ----
-    kappa = torch.clamp(kappa, min=1e-3, max=50.0)
+def rotation_aleatoric_loss(R_pred, R_gt, s_R, eps=1e-6):
+    trace = torch.sum(R_pred.transpose(1,2) * R_gt, dim=(1,2))
+    cos = torch.clamp((trace - 1) / 2, -1 + eps, 1 - eps)
+    theta = torch.acos(cos)
 
-    R_err = torch.matmul(R_pred.transpose(-1, -2), R_gt)
+    sigma = torch.nn.functional.softplus(s_R) + eps
 
-    align = (
-        kappa[:, 0] * R_err[:, 0, 0] +
-        kappa[:, 1] * R_err[:, 1, 1] +
-        kappa[:, 2] * R_err[:, 2, 2]
-    )
-
-    kappa_bar = torch.mean(kappa, dim=1)
-
-    # weak but stable normalizer
-    log_c = torch.log(kappa_bar + eps) - kappa_bar
-
-    return torch.mean(-align + log_c)
-
+    loss = (theta**2) / (sigma**2) + torch.log(sigma**2)
+    return loss.mean()
 
 
 def get_angles(pred, gt, sym_inv: bool = False, eps: float = 1e-7) -> torch.Tensor:
@@ -78,7 +60,7 @@ def bayesian_combined_loss(args, preds, targets):
     gt_z, gt_y, gt_t = targets
 
     loss_z = torch.mean(get_angles(pred_z, gt_z))
-    loss_y = torch.mean(get_angles(pred_y, gt_y))
+    loss_y = torch.mean(get_angles(pred_y, gt_y, sym_inv=True))
     loss_t = torch.nn.L1Loss()(pred_t, gt_t)
 
     total_loss = loss_z + loss_y + args.weight * loss_t
@@ -88,9 +70,7 @@ def bayesian_combined_loss(args, preds, targets):
 def train(args):
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     print(f"Using device: {device}")
-
-    # load_model should construct the new Network(args) and move it to device,
-    # but we defensively call to(device) again (idempotent).
+    
     model = load_model(args)
     model = model.to(device)
 
@@ -155,66 +135,107 @@ def train(args):
 
             optimizer.zero_grad()
 
+            # --------------------------------------------------
+            # 1. Define loss function (aleatoric vs baseline)
+            # --------------------------------------------------
+
+            def compute_loss(pred_z, pred_y, pred_t, s_R, s_t, gt_z, gt_y, gt_t, sample):
+
+                if args.use_aleatoric:
+                    # --- ALEATORIC ---
+                    R_pred = build_rotation_from_yz(pred_y, pred_z)
+                    R_gt = sample["bin_transform"][:, :3, :3].to(device)
+
+                    loss_rot = rotation_aleatoric_loss(R_pred, R_gt, s_R)
+
+                    sigma_t = torch.nn.functional.softplus(s_t) + 1e-6
+                    var = sigma_t**2
+                    diff = (gt_t - pred_t)
+
+                    loss_t = 0.5 * (torch.log(var) + diff**2 / var)
+                    loss_t = args.weight * loss_t.sum(dim=1).mean()
+
+                    total = loss_rot + loss_t
+                    return total, loss_rot, loss_t, None, None
+
+                else:
+                    # --- BASELINE ---
+                    loss_z = torch.mean(get_angles(pred_z, gt_z))
+                    loss_y = torch.mean(get_angles(pred_y, gt_y, sym_inv=True))
+                    loss_t = args.weight * l1_loss(pred_t, gt_t)
+
+                    total = loss_z + loss_y + loss_t
+                    return total, None, loss_t, loss_z, loss_y
+
+            # --------------------------------------------------
+            # 2. Training step
+            # --------------------------------------------------
+
             if is_bayesian:
-                # For Bayesian mode, we let blitz handle multiple stochastic passes.
-                loss_parts = []
+
+                last_outputs = {}
 
                 def wrapped_loss(preds, targets):
-                    loss_total, loss_z, loss_y, loss_t = bayesian_combined_loss(args, preds, targets)
-                    loss_parts.append((loss_z, loss_y, loss_t))
-                    return loss_total
+                    pred_z, pred_y, pred_t, s_R, s_t = preds
+                    gt_z, gt_y, gt_t = targets
+
+                    total, loss_rot, loss_t, loss_z, loss_y = compute_loss(
+                        pred_z, pred_y, pred_t, s_R, s_t,
+                        gt_z, gt_y, gt_t, sample
+                    )
+
+                    last_outputs["loss_rot"] = loss_rot
+                    last_outputs["loss_t"] = loss_t
+                    last_outputs["loss_z"] = loss_z
+                    last_outputs["loss_y"] = loss_y
+
+                    return total
 
                 loss = model.sample_elbo(
                     xyz,
                     (gt_z, gt_y, gt_t),
                     criterion=wrapped_loss,
-                    sample_nbr=args.sample_nbr if args.sample_nbr is not None else 3,
-                    complexity_cost_weight=args.complexity_cost_weight if args.complexity_cost_weight is not None else 1e-5,
+                    sample_nbr=args.sample_nbr or 3,
+                    complexity_cost_weight=args.complexity_cost_weight or 1e-5,
                 )
 
-                loss_z, loss_y, loss_t = loss_parts[-1]
+                loss_rot = last_outputs.get("loss_rot")
+                loss_t   = last_outputs.get("loss_t")
+                loss_z   = last_outputs.get("loss_z")
+                loss_y   = last_outputs.get("loss_y")
 
             else:
-                # Deterministic / MC-Dropout mode
-                pred_z, pred_y, pred_t, pred_kappa, pred_sigma_t = model(xyz)
+                # Deterministic / MC-Dropout
 
-                # Original Loss:
-                # Angle loss is used for rotational components.
-                loss_z = torch.mean(get_angles(pred_z, gt_z))
-                # If you want symmetry for y-axis, re-enable sym_inv=True.
-                loss_y = torch.mean(get_angles(pred_y, gt_y))
-                # If you want normalized L2 instead, replace with normalized_l2_loss.
-                loss_t = args.weight * l1_loss(pred_t, gt_t)
-                loss = loss_z + loss_y + loss_t
+                pred_z, pred_y, pred_t, s_R, s_t = model(xyz)
 
-                # Loss that supports Matrix-Fisher rotation with concentration (translation unchanged):
-                # R_pred = build_rotation_from_yz(pred_y, pred_z)
-                # R_gt   = sample["bin_transform"][:, :3, :3].to(device)
+                loss, loss_rot, loss_t, loss_z, loss_y = compute_loss(
+                    pred_z, pred_y, pred_t, s_R, s_t,
+                    gt_z, gt_y, gt_t, sample
+                )
 
-                # loss_rot = matrix_fisher_nll(R_pred, R_gt, pred_kappa)
 
-                # # ---- Gaussian NLL for translation ----
-                # pred_sigma_t = torch.clamp(pred_sigma_t, min=1e-3, max=1.0)
-                # var = pred_sigma_t**2 + 1e-6
-                # loss_t = 0.5 * (torch.log(var) + (gt_t - pred_t)**2 / var)
-                # loss_t = args.weight * loss_t.mean()
+            # --------------------------------------------------
+            # 3. Running loss
+            # --------------------------------------------------
 
-                # loss = loss_rot + loss_t
+            loss_running = 0.9 * loss_running + 0.1 * loss.item()
+            if not is_bayesian:
+                sigma_t = torch.nn.functional.softplus(s_t).mean().item()
 
-            # # Running averages (true training losses)
-            # loss_rot_running = 0.9 * loss_rot_running + 0.1 * loss_rot.item()
-            # loss_t_running   = 0.9 * loss_t_running   + 0.1 * loss_t.item()
-            loss_running     = 0.9 * loss_running     + 0.1 * loss.item()
-
-            # Optional diagnostics
-            kappa_mean = pred_kappa.mean().item()
-
-            print(
-                f"Running loss: {loss_running:.6f}, "
-                f"z loss: {loss_z:.6f}, "
-                f"y loss: {loss_y:.6f}, "
-                f"t loss: {loss_t:.6f}, "
-            )
+            if args.use_aleatoric:
+                print(
+                    f"Running loss: {loss_running:.6f}, "
+                    f"rot loss: {loss_rot.item() if loss_rot is not None else 0:.6f}, "
+                    f"t loss: {loss_t.item() if loss_t is not None else 0:.6f}"
+                )
+            else:
+                print(
+                    f"Running loss: {loss_running:.6f}, "
+                    f"z loss: {loss_z.item() if loss_z is not None else 0:.6f}, "
+                    f"y loss: {loss_y.item() if loss_y is not None else 0:.6f}, "
+                    f"t loss: {loss_t.item() if loss_t is not None else 0:.6f}"
+                )
 
             loss.backward()
             optimizer.step()
@@ -238,29 +259,88 @@ def train(args):
                 gt_z = R_gt[:, :, 2]
                 gt_y = R_gt[:, :, 1]
                 gt_t = sample["bin_translation"].to(device)
-
+                
+                # PREDICTIONS
                 if is_bayesian:
                     preds = [model(xyz) for _ in range(3)]
+
+                    loss_samples = []
+                    loss_rot_samples = []
+                    loss_t_samples = []
+
+                    for p in preds:
+                        pred_z_i, pred_y_i, pred_t_i, s_R_i, s_t_i = p
+
+                        if args.use_aleatoric:
+                            R_pred_i = build_rotation_from_yz(pred_y_i, pred_z_i)
+
+                            loss_rot_i = rotation_aleatoric_loss(R_pred_i, R_gt, s_R_i)
+
+                            sigma_t_i = torch.nn.functional.softplus(s_t_i) + 1e-6
+                            var_i = sigma_t_i**2
+                            diff_i = (gt_t - pred_t_i)
+
+                            loss_t_i = 0.5 * (torch.log(var_i) + diff_i**2 / var_i)
+                            loss_t_i = args.weight * loss_t_i.sum(dim=1).mean()
+
+                            loss_i = loss_rot_i + loss_t_i
+
+                        else:
+                            loss_rot_i = torch.mean(get_angles(pred_z_i, gt_z)) + \
+                                        torch.mean(get_angles(pred_y_i, gt_y, sym_inv=True))
+
+                            loss_t_i = args.weight * l1_loss(pred_t_i, gt_t)
+
+                            loss_i = loss_rot_i + loss_t_i
+
+                        loss_samples.append(loss_i)
+                        loss_rot_samples.append(loss_rot_i)
+                        loss_t_samples.append(loss_t_i)
+
+                    loss = torch.mean(torch.stack(loss_samples))
+                    loss_rot = torch.mean(torch.stack(loss_rot_samples))
+                    loss_t = torch.mean(torch.stack(loss_t_samples))
+
+                    # for metrics (still OK to use mean prediction)
                     pred_z = torch.mean(torch.stack([p[0] for p in preds]), dim=0)
                     pred_y = torch.mean(torch.stack([p[1] for p in preds]), dim=0)
                     pred_t = torch.mean(torch.stack([p[2] for p in preds]), dim=0)
-                    pred_kappa = torch.mean(torch.stack([p[3] for p in preds]), dim=0)
-                    pred_sigma_t = torch.mean(torch.stack([p[4] for p in preds]), dim=0)
+
+                    if args.use_aleatoric:
+                        s_R_samples = torch.stack([p[3] for p in preds])
+                        s_t_samples = torch.stack([p[4] for p in preds])
+
+                        sigma_t = torch.mean(torch.nn.functional.softplus(s_t_samples), dim=0)
+
+                        s_R = s_R_samples.mean(dim=0)
+
+
                 else:
-                    pred_z, pred_y, pred_t, pred_kappa, pred_sigma_t = model(xyz)
+                    pred_z, pred_y, pred_t, s_R, s_t = model(xyz)
+                    sigma_t = torch.nn.functional.softplus(s_t) + 1e-6
 
-                # ---- objective losses ----
-                R_pred = build_rotation_from_yz(pred_y, pred_z)
-                loss_rot = matrix_fisher_nll(R_pred, R_gt, pred_kappa)
-                # loss_t = args.weight * l1_loss(pred_t, gt_t)
-                eps = 1e-6
-                pred_sigma_t = torch.clamp(pred_sigma_t, min=1e-3, max=1.0)
-                var = pred_sigma_t**2 + eps
-                loss_t = 0.5 * (torch.log(var) + (gt_t - pred_t)**2 / var)
-                loss_t = args.weight * loss_t.mean()
-                loss = loss_rot + loss_t
+                # LOSSES
+                if not is_bayesian:
+                    if args.use_aleatoric:
+                        R_pred = build_rotation_from_yz(pred_y, pred_z)
+                        loss_rot = rotation_aleatoric_loss(R_pred, R_gt, s_R)
 
-                # ---- metrics (angles) ----
+                        var = sigma_t**2
+                        diff = (gt_t - pred_t)
+                        loss_t = 0.5 * (torch.log(var) + diff**2 / var)
+                        loss_t = args.weight * loss_t.sum(dim=1).mean()
+
+                        loss = loss_rot + loss_t
+
+                    else:
+                        loss_rot = torch.mean(get_angles(pred_z, gt_z)) + \
+                                torch.mean(get_angles(pred_y, gt_y, sym_inv=True))
+
+                        loss_t = args.weight * l1_loss(pred_t, gt_t)
+
+                        loss = loss_rot + loss_t
+
+                # METRICS
                 angle_z = torch.mean(get_angles(pred_z, gt_z))
                 angle_y = torch.mean(get_angles(pred_y, gt_y, sym_inv=True))
 

@@ -1,20 +1,51 @@
 import os
 import torch
-import cv2
 import numpy as np
 from dataset import Dataset
 from network import Network
 from network_helpers import  parse_command_line, load_model
-from scipy.spatial.transform import Rotation
 from torch.utils.data import DataLoader
 from shutil import copyfile
-import matplotlib.pyplot as plt
 from tqdm.auto import tqdm
 
 def enable_dropout(model):
     for module in model.modules():
         if isinstance(module, torch.nn.Dropout):
             module.train()
+
+def build_transform(z, y, t, eps=1e-8):
+    z = z / (np.linalg.norm(z) + eps)
+    y = y - np.dot(z, y) * z
+    y = y / (np.linalg.norm(y) + eps)
+    x = np.cross(y, z)
+
+    T = np.zeros((4,4), dtype=np.float32)
+    T[:3,0] = x
+    T[:3,1] = y
+    T[:3,2] = z
+    T[:3,3] = t
+    T[3,3] = 1.0
+    return T
+
+def save_prediction(path, transform, kappa_i=None, sigma_i=None):
+    with open(path, "w") as f:
+        np.savetxt(
+            f,
+            transform.T.ravel()[None, :],
+            fmt="%1.6f",
+            newline=" "
+        )
+        f.write("\n")
+
+        if kappa_i is not None:
+            f.write("# kappa\n")
+            f.write(f"{kappa_i:.6f}\n")
+
+        if sigma_i is not None:
+            f.write(
+                "# sigma_tx sigma_ty sigma_tz\n"
+                f"{sigma_i[0]:.6f} {sigma_i[1]:.6f} {sigma_i[2]:.6f}\n"
+            )
 
 def infer(args, export_to_folder=True):
     # load and set eval()
@@ -63,7 +94,7 @@ def infer(args, export_to_folder=True):
         if args.modifications in ["mc_dropout", "ensemble_mc_dropout"]:
             enable_dropout(model)
 
-        PRINT_PREDS = False   # <-- set True to print GT + predictions
+        PRINT_PREDS = False   # set True to print GT + predictions
 
         progress = tqdm(
             val_loader,
@@ -79,139 +110,54 @@ def infer(args, export_to_folder=True):
 
         for sample in progress:
 
-            # Monte Carlo / Bayesian branch
             if args.modifications in {"mc_dropout", "bayesian", "ensemble_mc_dropout"}:
-                for mc_idx in range(args.mc_samples):
-                    z, y, t, kappa, sigma_t = model(sample['xyz'].cuda())
-                    pred_zs = z.cpu().numpy()
-                    pred_ys = y.cpu().numpy()
-                    pred_ts = t.cpu().numpy()
+                n_passes = args.mc_samples
+            else:
+                n_passes = 1
+
+            for mc_idx in range(n_passes):
+                z, y, t, s_R, s_t = model(sample['xyz'].cuda())
+
+                pred_zs = z.cpu().numpy()
+                pred_ys = y.cpu().numpy()
+                pred_ts = t.cpu().numpy()
+
+                if args.use_aleatoric:
+                    sigma_R = torch.nn.functional.softplus(s_R)
+                    sigma_t = torch.nn.functional.softplus(s_t)
+                    kappa = 1.0 / (sigma_R**2 + 1e-8)
+
                     pred_kappas = kappa.cpu().numpy()
                     pred_sigma_ts = sigma_t.cpu().numpy()
+                else:
+                    pred_kappas = None
+                    pred_sigma_ts = None
 
-                    for i in range(len(pred_zs)):
-                        # build orthonormal basis
-                        z_i = pred_zs[i];   z_i /= np.linalg.norm(z_i)
-                        y_i = pred_ys[i]
-                        y_i -= np.dot(z_i, y_i) * z_i
-                        y_i /= np.linalg.norm(y_i)
-                        x_i = np.cross(y_i, z_i)
-                        kappa_i = pred_kappas[i]  # (3,)
+                for i in range(len(pred_zs)):
+                    transform = build_transform(pred_zs[i], pred_ys[i], pred_ts[i])
 
-                        transform = np.zeros((4,4), dtype=np.float32)
-                        transform[:3,0] = x_i
-                        transform[:3,1] = y_i
-                        transform[:3,2] = z_i
-                        transform[:3,3] = pred_ts[i]
-                        transform[3,3]  = 1.0
+                    txt_path = sample['txt_path'][i].replace("\\","/")
+                    subdir = os.path.dirname(txt_path)
 
-                        txt_path = sample['txt_path'][i].replace("\\","/")
+                    dst = os.path.join(export_root, subdir)
+                    os.makedirs(dst, exist_ok=True)
+
+                    if n_passes > 1:
                         base = os.path.basename(txt_path).replace(".txt","")
-                        txt_name = f'prediction{mc_idx}_{base}.txt'
-                        subdir   = os.path.dirname(txt_path)
+                        name = f"prediction{mc_idx}_{base}.txt"
+                    else:
+                        name = f"prediction_{os.path.basename(txt_path)}"
 
-                        # save to ~/inference/<model_name>/<subdir>/
-                        dst = os.path.join(export_root, subdir)
-                        os.makedirs(dst, exist_ok=True)
-                        out_file = os.path.join(dst, txt_name)
-                        with open(out_file, "w") as f:
-                            # write pose (same format as before)
-                            np.savetxt(
-                                f,
-                                transform.T.ravel()[None, :],
-                                fmt="%1.6f",
-                                newline=" "
-                            )
-                            f.write("\n")
-                            # append kappa
-                            f.write(
-                                "# kappa_x kappa_y kappa_z\n"
-                                f"{kappa_i[0]:.6f} {kappa_i[1]:.6f} {kappa_i[2]:.6f}\n"
-                            )
-                            sigma_i = pred_sigma_ts[i]
-                            f.write(
-                                "# sigma_tx sigma_ty sigma_tz\n"
-                                f"{sigma_i[0]:.6f} {sigma_i[1]:.6f} {sigma_i[2]:.6f}\n"
-                            )
+                    out_file = os.path.join(dst, name)
 
-            else:
-                # single deterministic pass
-                pred_z, pred_y, pred_t, pred_kappa, pred_sigma_t = model(sample['xyz'].cuda())
-
-                pred_zs = pred_z.cpu().numpy()
-                pred_ys = pred_y.cpu().numpy()
-                pred_ts = pred_t.cpu().numpy()
-                pred_kappas = pred_kappa.cpu().numpy()
-                pred_sigma_ts = pred_sigma_t.cpu().numpy()
-
-
-            gt_transforms = sample['orig_transform']
-
-            for i in range(len(pred_zs)):
-                
-
-                z = pred_zs[i];   z /= np.linalg.norm(z)
-                y = pred_ys[i]
-                y -= np.dot(z,y)*z
-                y /= np.linalg.norm(y)
-                x = np.cross(y, z)
-                kappa_i = pred_kappas[i]  # (3,)
-
-
-                transform = np.zeros((4,4), dtype=np.float32)
-                transform[:3,0] = x
-                transform[:3,1] = y
-                transform[:3,2] = z
-                transform[:3,3] = pred_ts[i]
-                transform[3,3]  = 1.0
-
-                # print GT vs pred
-                if PRINT_PREDS:
-                    print("*"*20)
-                    print("GT:")
-                    gt = gt_transforms[i].cpu().numpy()
-                    print("Det:", np.linalg.det(gt))
-                    print(gt)
-
-                    print("Predict:")
-                    print("Det:", np.linalg.det(transform))
-                    print(transform)
-
-                txt_path = sample['txt_path'][i].replace("\\","/")
-                txt_name = f'prediction_{os.path.basename(txt_path)}'
-                subdir   = os.path.dirname(txt_path)
-
-                # copy original scan
-                dst = os.path.join(export_root, subdir)
-                os.makedirs(dst, exist_ok=True)
-                orig = os.path.join(dir_path, txt_path)
-                if os.path.exists(orig):
-                    copyfile(orig, os.path.join(dst, os.path.basename(txt_path)))
-
-                # save prediction only if its non bayesian / mc
-                if args.modifications not in {"mc_dropout", "bayesian", "ensemble_mc_dropout"}:
-                    out_file = os.path.join(dst, txt_name)
-                    kappa_i = pred_kappas[i]  # (3,)
-
-                    with open(out_file, "w") as f:
-                        # pose
-                        np.savetxt(
-                            f,
-                            transform.T.ravel()[None, :],
-                            fmt="%1.6f",
-                            newline=" "
-                        )
-                        f.write("\n")
-                        # kappa
-                        f.write(
-                            "# kappa_x kappa_y kappa_z\n"
-                            f"{kappa_i[0]:.6f} {kappa_i[1]:.6f} {kappa_i[2]:.6f}\n"
-                        )
+                    if args.use_aleatoric:
+                        kappa_i = pred_kappas[i, 0]
                         sigma_i = pred_sigma_ts[i]
-                        f.write(
-                            "# sigma_tx sigma_ty sigma_tz\n"
-                            f"{sigma_i[0]:.6f} {sigma_i[1]:.6f} {sigma_i[2]:.6f}\n"
-                        )
+                    else:
+                        kappa_i = None
+                        sigma_i = None
+
+                    save_prediction(out_file, transform, kappa_i, sigma_i)
 
 if __name__ == '__main__':
     """

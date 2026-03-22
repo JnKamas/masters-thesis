@@ -61,6 +61,7 @@ def parse_command_line():
     parser.add_argument('-ccw', '--complexity_cost_weight', type=float, default=0.001)
     parser.add_argument('-bt', '--bayesian_type', type=int, default=0)
     parser.add_argument('-is', '--input_sigma', type=float, default=0.1)
+    parser.add_argument('-ale', '--use_aleatoric', action='store_true', default=False, help="Whether to output aleatoric uncertainty estimates (kappa and sigma_t) during inference), will change loss completely.")
     parser.add_argument('--ensemble_dir', type=str, default=None, help="Directory with ensemble .pth models")
     parser.add_argument('--out_dir', type=str, default=None, help="Output directory for inference results")
     parser.add_argument('path')

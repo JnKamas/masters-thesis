@@ -38,13 +38,17 @@ class Network(nn.Module):
         self.p_rot = getattr(args, "dropout_prob_rot", args.dropout_prob)
         self.p_trans = getattr(args, "dropout_prob_trans", args.dropout_prob)
 
+        self.use_aleatoric = getattr(args, "use_aleatoric", False)
+        self.p = getattr(args, "dropout_prob", 0.1)
+
         if args.backbone == 'resnet18':
             backbone = resnet18(weights=ResNet18_Weights.DEFAULT)
         elif args.backbone == 'resnet34':
             backbone = resnet34(weights=ResNet34_Weights.DEFAULT)
-        else:
+        elif args.backbone == 'resnet50':
             backbone = resnet50(weights=ResNet50_Weights.DEFAULT)
-
+        else:
+            raise ValueError(f"Unsupported backbone: {args.backbone}")
         if args.modifications == "mc_dropout":
             backbone = insert_block_dropout(backbone, self.p_backbone)
 
@@ -52,99 +56,75 @@ class Network(nn.Module):
         last_feat = list(backbone.children())[-1].in_features // 2
 
         # Heads 
-        def make_head(p):
-            return nn.Sequential(
-                nn.Linear(last_feat, 128),
-                nn.LeakyReLU(),
-                nn.Linear(128, 64),
-                nn.LeakyReLU(),
-                nn.Linear(64, 3),
+        def make_head(input_feat, output_feat):
+            return torch.nn.Sequential(
+                torch.nn.Linear(input_feat, 128),
+                torch.nn.LeakyReLU(),
+                torch.nn.Linear(128, 64),
+                torch.nn.LeakyReLU(),
+                torch.nn.Linear(64, output_feat)
             )
 
-        def make_dropout_head(p):
-            return nn.Sequential(
-                nn.Linear(last_feat, 128),
-                nn.LeakyReLU(),
-                nn.Dropout(p),
-                nn.Linear(128, 64),
-                nn.LeakyReLU(),
-                nn.Dropout(p),
-                nn.Linear(64, 3),
+        def make_dropout_head(input_feat, output_feat, p):
+            return torch.nn.Sequential(
+                torch.nn.Linear(input_feat, 128),
+                torch.nn.LeakyReLU(),
+                torch.nn.Dropout(p),
+                torch.nn.Linear(128, 64),
+                torch.nn.LeakyReLU(),
+                torch.nn.Dropout(p),
+                torch.nn.Linear(64, output_feat)
             )
 
-        def make_bayesian_head(btype):
+        def make_bayesian_head(input_feat, output_feat, btype):
             if btype == 1:
                 return nn.Sequential(
-                    BayesianLinear(last_feat, 128),
+                    BayesianLinear(input_feat, 128),
                     nn.LeakyReLU(),
                     nn.Linear(128, 64),
                     nn.LeakyReLU(),
-                    nn.Linear(64, 3),
+                    nn.Linear(64, output_feat),
                 )
             if btype == 2:
                 return nn.Sequential(
-                    nn.Linear(last_feat, 128),
+                    nn.Linear(input_feat, 128),
                     nn.LeakyReLU(),
                     nn.Linear(128, 64),
                     nn.LeakyReLU(),
-                    BayesianLinear(64, 3),
+                    BayesianLinear(64, output_feat),
                 )
             if btype == 3:
                 return nn.Sequential(
-                    nn.Linear(last_feat, 128),
+                    nn.Linear(input_feat, 128),
                     nn.LeakyReLU(),
                     BayesianLinear(128, 64),
                     nn.LeakyReLU(),
-                    nn.Linear(64, 3),
+                    nn.Linear(64, output_feat),
                 )
             return nn.Sequential(
-                BayesianLinear(last_feat, 128),
+                BayesianLinear(input_feat, 128),
                 nn.LeakyReLU(),
                 BayesianLinear(128, 64),
                 nn.LeakyReLU(),
-                BayesianLinear(64, 3),
+                BayesianLinear(64, output_feat),
             )
         
-        def make_concentration_head(p=0.0):
-            return nn.Sequential(
-                nn.Linear(last_feat, 128),
-                nn.LeakyReLU(),
-                nn.Dropout(p),
-                nn.Linear(128, 64),
-                nn.LeakyReLU(),
-                nn.Dropout(p),
-                nn.Linear(64, 3),
-                nn.Softplus()  # ensures positivity
-            )
-
-        def make_translation_variance_head(p=0.0):
-            return nn.Sequential(
-                nn.Linear(last_feat, 128),
-                nn.LeakyReLU(),
-                nn.Dropout(p),
-                nn.Linear(128, 64),
-                nn.LeakyReLU(),
-                nn.Dropout(p),
-                nn.Linear(64, 3),
-                nn.Softplus()
-            )
-
+        # dimension is extended to four when using aleatoric uncertainty
+        output_feat_rot = 4 if self.use_aleatoric else 3 # only for one rotation vector.
+        outpot_feat_trans = 6 if self.use_aleatoric else 3 # we dont predict just pose but also std
         if args.modifications == "mc_dropout":
-            self.fc_z = make_dropout_head(self.p_rot)
-            self.fc_y = make_dropout_head(self.p_rot)
-            self.fc_t = make_dropout_head(self.p_trans)
+            self.fc_z = make_dropout_head(last_feat, 3, self.p_rot)
+            self.fc_y = make_dropout_head(last_feat, output_feat_rot, self.p_rot)
+            self.fc_t = make_dropout_head(last_feat, outpot_feat_trans, self.p_trans)
         elif args.modifications == "bayesian":
-            self.fc_z = make_bayesian_head(args.bayesian_type)
-            self.fc_y = make_bayesian_head(args.bayesian_type)
-            self.fc_t = make_bayesian_head(args.bayesian_type)
+            self.fc_z = make_bayesian_head(last_feat, 3, args.bayesian_type)
+            self.fc_y = make_bayesian_head(last_feat, output_feat_rot, args.bayesian_type)
+            self.fc_t = make_bayesian_head(last_feat, outpot_feat_trans, args.bayesian_type)
         else:
-            self.fc_z = make_head(0.0)
-            self.fc_y = make_head(0.0)
-            self.fc_t = make_head(0.0)
-        
-        # Concentration heads (for Matrix-Fisher distribution)
-        self.fc_kappa = make_concentration_head(0.0)
-        self.fc_sigma_t = make_translation_variance_head(0.0)
+            self.fc_z = make_head(last_feat, 3)
+            self.fc_y = make_head(last_feat, output_feat_rot)
+            self.fc_t = make_head(last_feat, outpot_feat_trans)
+    
 
     # ------------------------------------------------------------
     # Forward
@@ -152,13 +132,21 @@ class Network(nn.Module):
     def forward(self, x):
         x = self.backbone(x)
 
-        x = torch.mean(x, dim=-1)  # mean over width
-        x = torch.mean(x, dim=-1)  # mean over height
+        # Global average pooling
+        x = torch.mean(x, dim=-1)
+        x = torch.mean(x, dim=-1)
 
         z = self.fc_z(x)
         y = self.fc_y(x)
         t = self.fc_t(x)
-        kappa = self.fc_kappa(x)
-        sigma_t = self.fc_sigma_t(x)
 
-        return z, y, t, kappa, sigma_t
+        if self.use_aleatoric:
+            y_vec = y[:, :3]
+            sigma_r = y[:, 3:4]
+
+            t_vec = t[:, :3]
+            s_t = t[:, 3:]
+
+            return z, y_vec, t_vec, sigma_r, s_t
+
+        return z, y, t, None, None
