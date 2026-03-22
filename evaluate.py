@@ -87,7 +87,7 @@ def evaluate(args):
     all_gts_t = []
     all_gts_R = []
 
-    all_kappas = []        # list of (N_mc, 3)
+    all_kappas = []        # list of (N_mc, 1)
     all_kappa_means = []  # per sample
 
     all_sigmas = []       # list of (N_mc, 3)
@@ -136,9 +136,15 @@ def evaluate(args):
             kappa = read_kappa_from_prediction_file(os.path.join(path, pr_file))
             sigma = read_sigma_from_prediction_file(os.path.join(path, pr_file))
 
+            if kappa is None:
+                kappa = 1.0
+
+            if sigma is None:
+                sigma = np.ones(3) * 1e-3
+
             Rs = np.expand_dims(pr_R, 0)
             ts = np.expand_dims(pr_t, 0)
-            kappas = np.expand_dims(kappa, 0)
+            kappas = np.array([kappa])
             sigmas = np.expand_dims(sigma, 0)
 
             all_kappas.append(kappas)
@@ -513,8 +519,8 @@ def evaluate(args):
                 "nll_matrix_fisher": safe(mean_nll_rot_alea),
             },
             "parameters": {
-                "kappa_mean": safe(np.mean(all_kappa_means_arr, axis=0).tolist()),
-                "kappa_std": safe(np.std(all_kappa_means_arr, axis=0).tolist()),
+                "kappa_mean": safe(float(np.mean(all_kappa_means_arr))),
+                "kappa_std": safe(float(np.std(all_kappa_means_arr))),
             },
         }
     else:
