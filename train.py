@@ -3,6 +3,7 @@ import numpy as np
 import torch
 from torch.utils.data import DataLoader
 import matplotlib.pyplot as plt
+import time
 
 from network import Network
 from network_helpers import normalized_l2_loss, parse_command_line, load_model
@@ -61,7 +62,7 @@ def bayesian_combined_loss(args, preds, targets):
     gt_z, gt_y, gt_t = targets
 
     loss_z = torch.mean(get_angles(pred_z, gt_z))
-    loss_y = torch.mean(get_angles(pred_y, gt_y, sym_inv=True))
+    loss_y = torch.mean(get_angles(pred_y, gt_y))
     loss_t = torch.nn.L1Loss()(pred_t, gt_t)
 
     total_loss = loss_z + loss_y + args.weight * loss_t
@@ -169,7 +170,7 @@ def train(args):
                 else:
                     # --- BASELINE ---
                     loss_z = torch.mean(get_angles(pred_z, gt_z))
-                    loss_y = torch.mean(get_angles(pred_y, gt_y, sym_inv=True))
+                    loss_y = torch.mean(get_angles(pred_y, gt_y))
                     loss_t = args.weight * l1_loss(pred_t, gt_t)
 
                     total = loss_z + loss_y + loss_t
@@ -222,11 +223,11 @@ def train(args):
                     gt_z, gt_y, gt_t, sample
                 )
 
-            rot_loss = (loss_z + loss_y)
+            rot_loss = (loss_z + loss_y) if loss_z is not None else loss_rot
 
             epoch_train_loss.append(loss.item())
             epoch_train_rot.append(rot_loss.item())
-            epoch_train_t.append(loss_t.item())
+            epoch_train_t.append((loss_t / args.weight).item())
 
 
             # --------------------------------------------------
@@ -305,7 +306,7 @@ def train(args):
 
                         else:
                             loss_rot_i = torch.mean(get_angles(pred_z_i, gt_z)) + \
-                                        torch.mean(get_angles(pred_y_i, gt_y, sym_inv=True))
+                                        torch.mean(get_angles(pred_y_i, gt_y))
 
                             loss_t_i = args.weight * l1_loss(pred_t_i, gt_t)
 
@@ -365,7 +366,7 @@ def train(args):
 
                 val_losses.append(loss.item())
                 val_losses_rot.append(loss_rot.item())
-                val_losses_t.append(loss_t.item())
+                val_losses_t.append((loss_t / args.weight).item())
                 val_angle_z.append(angle_z.item())
                 val_angle_y.append(angle_y.item())
 
@@ -399,8 +400,8 @@ def train(args):
             f.write(f"{e+1}\t{loss_running:.6f}\t{np.mean(val_losses):.6f}\n")
 
     # Final model save
-    os.makedirs("models", exist_ok=True)
-    final_model_name = f"models/bayes_is{args.input_sigma}.pth"
+    os.makedirs("models/pre-final", exist_ok=True)
+    final_model_name = f"models/pre-final/{time.strftime('%Y-%m-%d_%H-%M-%S')}.pth"
     torch.save(model.state_dict(), final_model_name)
 
     # Save loss curves
