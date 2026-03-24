@@ -2,6 +2,7 @@ import os
 import numpy as np
 import torch
 from torch.utils.data import DataLoader
+import matplotlib.pyplot as plt
 
 from network import Network
 from network_helpers import normalized_l2_loss, parse_command_line, load_model
@@ -123,9 +124,16 @@ def train(args):
     train_loss_all = []
     val_loss_all = []
 
+    train_rot_all = []
+    train_t_all = []
+
     for e in range(start_epoch, args.epochs):
         print(f"Starting epoch: {e}")
         model.train()
+
+        epoch_train_loss = []
+        epoch_train_rot = []
+        epoch_train_t = []
 
         for sample in train_loader:
             xyz = sample["xyz"].to(device)
@@ -214,33 +222,43 @@ def train(args):
                     gt_z, gt_y, gt_t, sample
                 )
 
+            rot_loss = (loss_z + loss_y)
+
+            epoch_train_loss.append(loss.item())
+            epoch_train_rot.append(rot_loss.item())
+            epoch_train_t.append(loss_t.item())
+
 
             # --------------------------------------------------
             # 3. Running loss
             # --------------------------------------------------
 
             loss_running = 0.9 * loss_running + 0.1 * loss.item()
-            if not is_bayesian:
+            if not is_bayesian and args.use_aleatoric:
                 sigma_t = torch.nn.functional.softplus(s_t).mean().item()
 
-            if args.use_aleatoric:
-                print(
-                    f"Running loss: {loss_running:.6f}, "
-                    f"rot loss: {loss_rot.item() if loss_rot is not None else 0:.6f}, "
-                    f"t loss: {loss_t.item() if loss_t is not None else 0:.6f}"
-                )
-            else:
-                print(
-                    f"Running loss: {loss_running:.6f}, "
-                    f"z loss: {loss_z.item() if loss_z is not None else 0:.6f}, "
-                    f"y loss: {loss_y.item() if loss_y is not None else 0:.6f}, "
-                    f"t loss: {loss_t.item() if loss_t is not None else 0:.6f}"
-                )
+            PRINT_RUNNING = False
+            if PRINT_RUNNING:
+                if args.use_aleatoric:
+                    print(
+                        f"Running loss: {loss_running:.6f}, "
+                        f"rot loss: {loss_rot.item() if loss_rot is not None else 0:.6f}, "
+                        f"t loss: {loss_t.item() if loss_t is not None else 0:.6f}"
+                    )
+                else:
+                    print(
+                        f"Running loss: {loss_running:.6f}, "
+                        f"z loss: {loss_z.item() if loss_z is not None else 0:.6f}, "
+                        f"y loss: {loss_y.item() if loss_y is not None else 0:.6f}, "
+                        f"t loss: {loss_t.item() if loss_t is not None else 0:.6f}"
+                    )
 
             loss.backward()
             optimizer.step()
 
-        train_loss_all.append(loss_running)
+        train_loss_all.append(np.mean(epoch_train_loss))
+        train_rot_all.append(np.mean(epoch_train_rot))
+        train_t_all.append(np.mean(epoch_train_t))
 
         # ---------------------------------------------------------------------
         # Validation
@@ -248,7 +266,7 @@ def train(args):
         model.eval()
         with torch.no_grad():
             val_losses = []          # total objective
-            val_losses_rot = []      # Matrix Fisher NLL
+            val_losses_rot = []      # rotation
             val_losses_t = []        # translation
             val_angle_z = []         # metrics only
             val_angle_y = []
@@ -317,7 +335,8 @@ def train(args):
 
                 else:
                     pred_z, pred_y, pred_t, s_R, s_t = model(xyz)
-                    sigma_t = torch.nn.functional.softplus(s_t) + 1e-6
+                    if args.use_aleatoric:
+                        sigma_t = torch.nn.functional.softplus(s_t) + 1e-6
 
                 # LOSSES
                 if not is_bayesian:
@@ -352,21 +371,17 @@ def train(args):
 
             print(20 * "*")
             print(f"Epoch {e}/{args.epochs}")
+
             print(
-                "means - "
-                f"val loss: {np.mean(val_losses):.6f}, "
-                f"rot NLL: {np.mean(val_losses_rot):.6f}, "
-                f"t loss: {np.mean(val_losses_t):.6f}, "
-                f"angle z: {np.mean(val_angle_z):.4f}, "
-                f"angle y: {np.mean(val_angle_y):.4f}"
+                f"TRAIN - loss: {train_loss_all[-1]:.6f}, "
+                f"rot: {train_rot_all[-1]:.6f}, "
+                f"t: {train_t_all[-1]:.6f}"
             )
+
             print(
-                "medians - "
-                f"val loss: {np.median(val_losses):.6f}, "
-                f"rot NLL: {np.median(val_losses_rot):.6f}, "
-                f"t loss: {np.median(val_losses_t):.6f}, "
-                f"angle z: {np.median(val_angle_z):.4f}, "
-                f"angle y: {np.median(val_angle_y):.4f}"
+                f"VAL   - loss: {np.mean(val_losses):.6f}, "
+                f"rot: {np.mean(val_losses_rot):.6f}, "
+                f"t: {np.mean(val_losses_t):.6f}"
             )
 
             val_loss_all.append(np.mean(val_losses))
@@ -392,7 +407,22 @@ def train(args):
     np.set_printoptions(suppress=True)
     np.savetxt("train_err.out", np.array(train_loss_all), delimiter=",")
     np.savetxt("val_err.out", np.array(val_loss_all), delimiter=",")
+    np.savetxt("train_rot.out", np.array(train_rot_all), delimiter=",")
+    np.savetxt("train_t.out", np.array(train_t_all), delimiter=",")
 
+    # Save losses plot
+    epochs = np.arange(len(train_loss_all))
+
+    plt.figure()
+    plt.plot(epochs, train_loss_all, label="train")
+    plt.plot(epochs, val_loss_all, label="val")
+    plt.xlabel("epoch")
+    plt.ylabel("loss")
+    plt.legend()
+    plt.grid()
+
+    plt.savefig("loss_curve.png")
+    plt.close()
 
 if __name__ == "__main__":
     """
