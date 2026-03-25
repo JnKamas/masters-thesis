@@ -125,18 +125,18 @@ def remap_dropout_state_dict(base_sd):
                 new_sd['.'.join(parts)] = v
                 continue
 
-        # 2) BACKBONE REMAPPING
-        if parts[0] == 'backbone' and parts[1].isdigit() and parts[2].isdigit():
-            layer_idx = int(parts[1])
-            block_idx = int(parts[2])
+        # # 2) BACKBONE REMAPPING
+        # if parts[0] == 'backbone' and parts[1].isdigit() and parts[2].isdigit():
+        #     layer_idx = int(parts[1])
+        #     block_idx = int(parts[2])
 
-            if layer_idx in (4, 5, 6, 7):
+        #     if layer_idx in (4, 5, 6, 7):
 
-                new_block_idx = block_idx * 2
+        #         new_block_idx = block_idx * 2
 
-                parts[2] = str(new_block_idx)
-                new_sd['.'.join(parts)] = v
-                continue
+        #         parts[2] = str(new_block_idx)
+        #         new_sd['.'.join(parts)] = v
+        #         continue
 
         new_sd[k] = v
 

@@ -8,6 +8,7 @@ import numpy as np
 from statistics import mean, median
 from scipy.linalg import logm, svd
 from scipy.spatial.transform import Rotation as sciR
+from scipy.stats import spearmanr
 import warnings
 from collections import defaultdict
 import shutil
@@ -331,33 +332,41 @@ def evaluate(args):
     mean_nll_rot_alea = float(np.mean(rotation_nll_aleatoric))
     mean_nll_rot_epi  = float(np.mean(rotation_nll_epistemic))
 
-    corr_t_list = []
-    corr_r_list = []
+    errors_t = []
+    uncertainties_t = []
 
-    for preds_t, preds_R, gt_t, gt_R in zip(all_preds_t, all_preds_R, all_gts_t, all_gts_R):
-
+    for preds_t, gt_t in zip(all_preds_t, all_gts_t):
         preds_t_arr = np.array(preds_t)
-        mean_t = np.mean(preds_t_arr, axis=0)
 
-        corr_t = correlation_translation(
-            mean_t[None, :],
-            gt_t[None, :],
-            preds_t_arr[:, None, :]
-        )
-        corr_t_list.append(corr_t)
+        mu = np.mean(preds_t_arr, axis=0)
+        sigma = np.std(preds_t_arr, axis=0)
 
+        err = np.linalg.norm(mu - gt_t)
+        unc = np.linalg.norm(sigma)
+
+        errors_t.append(err)
+        uncertainties_t.append(unc)
+
+    mean_corr_t = float(spearmanr(errors_t, uncertainties_t).correlation)
+
+
+    errors_r = []
+    uncertainties_r = []
+
+    for preds_R, gt_R in zip(all_preds_R, all_gts_R):
         preds_R_arr = np.array(preds_R)
-        mean_R = mean_rotation_SVD(preds_R_arr)
 
-        corr_r = correlation_rotation(
-            mean_R[None, ...],
-            gt_R[None, ...],
-            preds_R_arr[:, None, ...]
-        )
-        corr_r_list.append(corr_r)
+        R_bar = mean_rotation_SVD(preds_R_arr)
 
-    mean_corr_t = float(np.mean(corr_t_list))
-    mean_corr_r = float(np.mean(corr_r_list))
+        err = geodesic_distance(R_bar, gt_R)
+
+        angles = [geodesic_distance(R_bar, R) for R in preds_R_arr]
+        unc = np.std(angles)
+
+        errors_r.append(err)
+        uncertainties_r.append(unc)
+
+    mean_corr_r = float(spearmanr(errors_r, uncertainties_r).correlation)
 
     print("Translation Uncertainty:")
     for j in range(3):
