@@ -37,6 +37,10 @@ def build_parser(proj_root):
                         help="Batch size for inference")
     parser.add_argument("--no_preload", action="store_true",
                         help="Pass --no_preload to infer.py")
+    parser.add_argument("-iw", "--input_width", type=int, default=516,
+                        help="Input width for inference")
+    parser.add_argument("-ih", "--input_height", type=int, default=386,
+                        help="Input height for inference")
 
     # Paths
     parser.add_argument("--dataset",
@@ -80,6 +84,8 @@ def build_infer_cmd(args, infer_script, weights_path):
     cmd = [
         sys.executable, infer_script,
         "-bb", args.backbone,
+        "-iw", str(args.input_width),
+        "-ih", str(args.input_height),
         "-dpt", str(args.dropout_prob_trans),
         "-dpr", str(args.dropout_prob_rot),
         "-dpb", str(args.dropout_prob_backbone),
