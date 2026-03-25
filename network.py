@@ -1,10 +1,7 @@
 import torch
 import torch.nn as nn
-from torchvision.models import (
-    resnet18, ResNet18_Weights,
-    resnet34, ResNet34_Weights,
-    resnet50, ResNet50_Weights
-)
+
+import torchvision
 from blitz.modules import BayesianLinear
 from blitz.utils import variational_estimator
 
@@ -42,18 +39,18 @@ class Network(nn.Module):
         self.p = getattr(args, "dropout_prob", 0.1)
 
         if args.backbone == 'resnet18':
-            backbone = resnet18(weights=ResNet18_Weights.DEFAULT)
+            pretrained_backbone_model  = torchvision.models.resnet18(pretrained=True)
         elif args.backbone == 'resnet34':
-            backbone = resnet34(weights=ResNet34_Weights.DEFAULT)
+            pretrained_backbone_model  = torchvision.models.resnet34(pretrained=True)
         elif args.backbone == 'resnet50':
-            backbone = resnet50(weights=ResNet50_Weights.DEFAULT)
+            pretrained_backbone_model  = torchvision.models.resnet50(pretrained=True)
         else:
             raise ValueError(f"Unsupported backbone: {args.backbone}")
-        if args.modifications == "mc_dropout":
-            backbone = insert_block_dropout(backbone, self.p_backbone)
+        # if args.modifications == "mc_dropout":
+        #     backbone = insert_block_dropout(backbone, self.p_backbone)
 
-        self.backbone = nn.Sequential(*list(backbone.children())[:-3])
-        last_feat = list(backbone.children())[-1].in_features // 2
+        last_feat = list(pretrained_backbone_model.children())[-1].in_features // 2
+        self.backbone = nn.Sequential(*list(pretrained_backbone_model.children())[:-3])
 
         # Heads 
         def make_head(input_feat, output_feat):
@@ -149,4 +146,4 @@ class Network(nn.Module):
 
             return z, y_vec, t_vec, sigma_r, s_t
 
-        return z, y, t, None, None
+        return z, y, t

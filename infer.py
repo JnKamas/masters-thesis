@@ -116,7 +116,10 @@ def infer(args, export_to_folder=True):
                 n_passes = 1
 
             for mc_idx in range(n_passes):
-                z, y, t, s_R, s_t = model(sample['xyz'].cuda())
+                if args.use_aleatoric:
+                    z, y, t, s_R, s_t = model(sample['xyz'].cuda())
+                else:
+                    z, y, t = model(sample['xyz'].cuda())
 
                 pred_zs = z.cpu().numpy()
                 pred_ys = y.cpu().numpy()
@@ -156,7 +159,7 @@ def infer(args, export_to_folder=True):
                     else:
                         kappa_i = None
                         sigma_i = None
-                        
+
                     # ---- COPY GT / ORIGINAL FILE ----
                     orig = os.path.join(dir_path, txt_path)
                     dst_gt = os.path.join(dst, os.path.basename(txt_path))

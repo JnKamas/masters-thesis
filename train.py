@@ -216,12 +216,20 @@ def train(args):
             else:
                 # Deterministic / MC-Dropout
 
-                pred_z, pred_y, pred_t, s_R, s_t = model(xyz)
-
-                loss, loss_rot, loss_t, loss_z, loss_y = compute_loss(
-                    pred_z, pred_y, pred_t, s_R, s_t,
-                    gt_z, gt_y, gt_t, sample
-                )
+                if args.use_aleatoric:
+                    pred_z, pred_y, pred_t, s_R, s_t = model(xyz)
+                else:
+                    pred_z, pred_y, pred_t = model(xyz)
+                if args.use_aleatoric:
+                    loss, loss_rot, loss_t, loss_z, loss_y = compute_loss(
+                        pred_z, pred_y, pred_t, s_R, s_t,
+                        gt_z, gt_y, gt_t, sample
+                    )
+                else:
+                    loss, _, loss_t, loss_z, loss_y = compute_loss(
+                        pred_z, pred_y, pred_t, None, None,
+                        gt_z, gt_y, gt_t, sample
+                    )
 
             rot_loss = (loss_z + loss_y) if loss_z is not None else loss_rot
 
@@ -288,9 +296,8 @@ def train(args):
                     loss_t_samples = []
 
                     for p in preds:
-                        pred_z_i, pred_y_i, pred_t_i, s_R_i, s_t_i = p
-
                         if args.use_aleatoric:
+                            pred_z_i, pred_y_i, pred_t_i, s_R_i, s_t_i = p
                             R_pred_i = build_rotation_from_yz(pred_y_i, pred_z_i)
 
                             loss_rot_i = rotation_aleatoric_loss(R_pred_i, R_gt, s_R_i)
@@ -305,6 +312,7 @@ def train(args):
                             loss_i = loss_rot_i + loss_t_i
 
                         else:
+                            pred_z_i, pred_y_i, pred_t_i = p
                             loss_rot_i = torch.mean(get_angles(pred_z_i, gt_z)) + \
                                         torch.mean(get_angles(pred_y_i, gt_y))
 
@@ -335,8 +343,9 @@ def train(args):
 
 
                 else:
-                    pred_z, pred_y, pred_t, s_R, s_t = model(xyz)
+                    pred_z, pred_y, pred_t = model(xyz)
                     if args.use_aleatoric:
+                        pred_z, pred_y, pred_t, s_R, s_t = model(xyz)
                         sigma_t = torch.nn.functional.softplus(s_t) + 1e-6
 
                 # LOSSES
@@ -400,8 +409,8 @@ def train(args):
             f.write(f"{e+1}\t{loss_running:.6f}\t{np.mean(val_losses):.6f}\n")
 
     # Final model save
-    os.makedirs("models/pre-final", exist_ok=True)
-    final_model_name = f"models/pre-final/{time.strftime('%Y-%m-%d_%H-%M-%S')}.pth"
+    os.makedirs("models", exist_ok=True)
+    final_model_name = f"models/{time.strftime('%Y-%m-%d_%H-%M-%S')}.pth"
     torch.save(model.state_dict(), final_model_name)
 
     # Save loss curves
