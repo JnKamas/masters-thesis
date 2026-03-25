@@ -17,6 +17,9 @@ from network_helpers import parse_command_line
 
 warnings.filterwarnings("ignore", category=RuntimeWarning)
 
+# symmetry 
+S = sciR.from_euler('z', np.pi).as_matrix()
+
 def estimate_isotropic_kappa_from_samples(Rs, eps=1e-8):
     R_bar = mean_rotation_SVD(Rs)
     angles = np.array([geodesic_distance(R_bar, R) for R in Rs])
@@ -167,16 +170,15 @@ def evaluate(args):
             gt_R1[:, 1] *= -1
         if np.linalg.det(pr_R) < 0:
             pr_R[:, 1] *= -1
-        gt_R2 = np.matrix.copy(gt_R1)
-        gt_R2[:, :2] *= -1
+
 
         # ---- Old metrics (mean only) ----
         eTE_list.append(calculate_eTE(gt_t, mean_t))
         if np.array_equal(pr_R, np.eye(3, 3)):
             eRE_list.append(float("inf"))
         else:
-            eRE_list.append(min(calculate_eRE(gt_R1, pr_R), calculate_eRE(gt_R2, pr_R)))
-        eGD_list.append(min(calculate_eGD(gt_R1, pr_R), calculate_eGD(gt_R2, pr_R)))
+            eRE_list.append(min(calculate_eRE(gt_R1, pr_R), calculate_eRE(gt_R1 @ S, pr_R)))
+        eGD_list.append(min(calculate_eGD(gt_R1, pr_R), calculate_eGD(gt_R1 @ S, pr_R)))
 
 
         all_preds_t.append(pts_arr)
@@ -195,9 +197,7 @@ def evaluate(args):
         angs = []
         for r in rots:
             q = sciR.from_matrix(r)
-            err1 = (q.inv() * sciR.from_matrix(gt_R1)).magnitude()
-            err2 = (q.inv() * sciR.from_matrix(gt_R2)).magnitude()
-            angs.append(min(err1, err2))
+            angs.append(min(geodesic_distance(r, gt_R1), geodesic_distance(r, gt_R1 @ S)))
 
         rotation_errors.append(np.mean(angs))
         rotation_std_errors.append(np.std(angs))
@@ -228,7 +228,7 @@ def evaluate(args):
         #  -- empirical coverage: does GT lie inside that ball? --
         # account for 180° symmetry
         d1 = geodesic_distance(gt_R1, R_bar_so3)
-        d2 = geodesic_distance(gt_R2, R_bar_so3)
+        d2 = geodesic_distance(gt_R1 @ S, R_bar_so3)
         covered = (min(d1, d2) <= r_alpha)
         credible_region_coverages.append(covered)
 
@@ -236,8 +236,8 @@ def evaluate(args):
 
         # --- Choose correct GT (handle symmetry) ---
         d1 = geodesic_distance(gt_R1, R_bar_so3)
-        d2 = geodesic_distance(gt_R2, R_bar_so3)
-        gt_R_best = gt_R1 if d1 <= d2 else gt_R2
+        d2 = geodesic_distance(gt_R1 @ S, R_bar_so3)
+        gt_R_best = gt_R1 if d1 <= d2 else (gt_R1 @ S)
 
         # --- ALEATORIC NLL ---
         if args.use_aleatoric:
@@ -358,7 +358,10 @@ def evaluate(args):
 
         R_bar = mean_rotation_SVD(preds_R_arr)
 
-        err = geodesic_distance(R_bar, gt_R)
+        err = min(
+            geodesic_distance(R_bar, gt_R),
+            geodesic_distance(R_bar, gt_R @ S)
+        )
 
         angles = [geodesic_distance(R_bar, R) for R in preds_R_arr]
         unc = np.std(angles)

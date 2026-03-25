@@ -17,7 +17,7 @@ def calculate_eTE(gt_t, pr_t):
     return np.linalg.norm((pr_t - gt_t), ord=2) / 10 # convert mm to cm
 
 def calculate_eRE(gt_R, pr_R):
-    numerator = np.trace(np.matmul(gt_R, np.linalg.inv(pr_R))) - 1
+    numerator = np.trace(gt_R @ pr_R.T) - 1
     numerator = np.clip(numerator, -2, 2)
     return np.arccos(numerator / 2)
 
@@ -76,6 +76,9 @@ def crps_rotation(R_samples, R_gt):
     R_samples: [T, B, 3, 3]
     R_gt: [B, 3, 3]
     """
+    # symmetry 
+    S = sciR.from_euler('z', np.pi).as_matrix()
+    
     T, B = R_samples.shape[:2]
 
     crps_vals = []
@@ -83,10 +86,16 @@ def crps_rotation(R_samples, R_gt):
     for b in range(B):
         # compute geodesic angles to GT → [T]
         thetas = np.array([
-            np.arccos(np.clip(
-                (np.trace(R_samples[t, b].T @ R_gt[b]) - 1) / 2,
-                -1.0, 1.0
-            ))
+            min(
+                np.arccos(np.clip(
+                    (np.trace(R_samples[t, b].T @ R_gt[b]) - 1) / 2,
+                    -1.0, 1.0
+                )),
+                np.arccos(np.clip(
+                    (np.trace(R_samples[t, b].T @ (R_gt[b] @ S)) - 1) / 2,
+                    -1.0, 1.0
+                ))
+            )
             for t in range(T)
         ])
 
@@ -186,7 +195,15 @@ def correlation_rotation(R_mean, R_gt, R_samples):
     B = R_mean.shape[0]
     T = R_samples.shape[0]
 
-    error = np.array([geodesic_distance(R_mean[i], R_gt[i]) for i in range(B)])
+    S = sciR.from_euler('z', np.pi).as_matrix()
+
+    error = np.array([
+        min(
+            geodesic_distance(R_mean[i], R_gt[i]),
+            geodesic_distance(R_mean[i], R_gt[i] @ S)
+        )
+        for i in range(B)
+    ])
 
     angles = []
     for t in range(T):
