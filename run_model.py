@@ -31,7 +31,7 @@ def build_parser(proj_root):
                         help="Backbone for inference")
 
     # Inference settings
-    parser.add_argument("-mc", "--mc_samples", type=int, default=30,
+    parser.add_argument("-mc", "--mc_samples", type=int, default=100,
                         help="Number of Monte Carlo samples")
     parser.add_argument("--batch_size", type=int, default=8,
                         help="Batch size for inference")

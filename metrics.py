@@ -68,56 +68,35 @@ def crps_translation(mu_t, sigma_t, t_gt):
     """
     return crps_gaussian(mu_t, sigma_t, t_gt)
 
-def normalize_quaternion(q):
-    return q / np.linalg.norm(q, axis=-1, keepdims=True)
-
-def align_quaternion(q_pred, q_gt):
-    dot = np.sum(q_pred * q_gt, axis=-1, keepdims=True)
-    sign = np.sign(dot)
-    sign[sign == 0] = 1
-    return q_pred * sign
-
-def rotation_matrix_to_quaternion(R):
-    """
-    R: [B, 3, 3]
-    returns: [B, 4]
-    """
-    B = R.shape[0]
-    q = np.zeros((B, 4))
-
-    trace = np.trace(R, axis1=1, axis2=2)
-
-    for i in range(B):
-        if trace[i] > 0:
-            s = np.sqrt(trace[i] + 1.0) * 2
-            q[i, 0] = 0.25 * s
-            q[i, 1] = (R[i, 2, 1] - R[i, 1, 2]) / s
-            q[i, 2] = (R[i, 0, 2] - R[i, 2, 0]) / s
-            q[i, 3] = (R[i, 1, 0] - R[i, 0, 1]) / s
-        else:
-            q[i, 0] = 1.0  # minimal safe fallback
-
-    return normalize_quaternion(q)
 
 def crps_rotation(R_samples, R_gt):
     """
+    CRPS on SO(3) using geodesic distances.
+
     R_samples: [T, B, 3, 3]
     R_gt: [B, 3, 3]
     """
     T, B = R_samples.shape[:2]
 
-    q_samples = rotation_matrix_to_quaternion(
-        R_samples.reshape(-1, 3, 3)
-    ).reshape(T, B, 4)
+    crps_vals = []
 
-    q_gt = rotation_matrix_to_quaternion(R_gt)
+    for b in range(B):
+        # compute geodesic angles to GT → [T]
+        thetas = np.array([
+            np.arccos(np.clip(
+                (np.trace(R_samples[t, b].T @ R_gt[b]) - 1) / 2,
+                -1.0, 1.0
+            ))
+            for t in range(T)
+        ])
 
-    q_samples = align_quaternion(q_samples, q_gt[None, ...])
+        # CRPS (sample-based, y = 0)
+        term1 = np.mean(np.abs(thetas))
+        term2 = 0.5 * np.mean(np.abs(thetas[:, None] - thetas[None, :]))
 
-    mu = np.mean(q_samples, axis=0)
-    sigma = np.std(q_samples, axis=0)
+        crps_vals.append(term1 - term2)
 
-    return crps_gaussian(mu, sigma, q_gt)
+    return float(np.mean(crps_vals))
 
 def compute_sharpness_translation(all_preds_t):
     """
