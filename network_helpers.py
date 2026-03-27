@@ -55,7 +55,6 @@ def parse_command_line():
     parser.add_argument('-mc', '--mc_samples', type=int, default=30)
     parser.add_argument('-dpt', '--dropout_prob_trans', type=float, default=0)
     parser.add_argument('-dpr', '--dropout_prob_rot', type=float, default=0)
-    parser.add_argument('-dp', '--dropout_prob', type=float, default=0)
     parser.add_argument('-dpb', '--dropout_prob_backbone', type=float, default=0.0, help='Dropout probability for ResNet backbone residual blocks')
     parser.add_argument('-sn', '--sample_nbr', type=int, default=3)
     parser.add_argument('-ccw', '--complexity_cost_weight', type=float, default=0.001)

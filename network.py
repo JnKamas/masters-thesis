@@ -31,12 +31,11 @@ class Network(nn.Module):
         super().__init__()
 
         # Dropout probabilities
-        self.p_backbone = getattr(args, "dropout_prob_backbone", args.dropout_prob)
-        self.p_rot = getattr(args, "dropout_prob_rot", args.dropout_prob)
-        self.p_trans = getattr(args, "dropout_prob_trans", args.dropout_prob)
+        self.p_backbone = getattr(args, "dropout_prob_backbone", 0.0)
+        self.p_rot = getattr(args, "dropout_prob_rot", 0.0)
+        self.p_trans = getattr(args, "dropout_prob_trans", 0.0)
 
         self.use_aleatoric = getattr(args, "use_aleatoric", False)
-        self.p = getattr(args, "dropout_prob", 0.1)
 
         if args.backbone == 'resnet18':
             pretrained_backbone_model  = torchvision.models.resnet18(pretrained=True)
@@ -46,8 +45,8 @@ class Network(nn.Module):
             pretrained_backbone_model  = torchvision.models.resnet50(pretrained=True)
         else:
             raise ValueError(f"Unsupported backbone: {args.backbone}")
-        # if args.modifications == "mc_dropout":
-        #     backbone = insert_block_dropout(backbone, self.p_backbone)
+        if args.modifications == "mc_dropout":
+            backbone = insert_block_dropout(backbone, self.p_backbone)
 
         last_feat = list(pretrained_backbone_model.children())[-1].in_features // 2
         self.backbone = nn.Sequential(*list(pretrained_backbone_model.children())[:-3])

@@ -58,8 +58,6 @@ def build_parser(proj_root):
                         help="Dropout probability for translation")
     parser.add_argument("-dpr", "--dropout_prob_rot", type=float, default=0.0,
                         help="Dropout probability for rotation")
-    parser.add_argument("-dp", "--dropout_prob", type=float, default=0.0,
-                        help="Dropout probability for MC Dropout heads")
     parser.add_argument("-dpb", "--dropout_prob_backbone", type=float, default=0.0,
                         help="Dropout probability for ResNet backbone residual blocks")
 
