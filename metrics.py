@@ -116,7 +116,7 @@ def compute_sharpness_translation(all_preds_t):
     # Standard deviation per sample, per axis
     stds = np.stack([np.std(p, axis=0) for p in all_preds_t])  # [N, 3]
     # Mean L2-norm of stds (vector sharpness)
-    sharpness_vec = np.mean(np.linalg.norm(stds, axis=1))
+    sharpness_vec = np.mean(np.linalg.norm(stds, axis=1)) / 10 # convert mm to cm
     # Mean per-dimension sharpness (macro-style)
     sharpness_dims = np.mean(stds, axis=0)
     return float(sharpness_vec), sharpness_dims
