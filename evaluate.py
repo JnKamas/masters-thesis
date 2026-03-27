@@ -10,8 +10,6 @@ from scipy.linalg import logm, svd
 from scipy.spatial.transform import Rotation as sciR
 from scipy.stats import spearmanr
 import warnings
-from collections import defaultdict
-import shutil
 from metrics import *
 from network_helpers import parse_command_line
 
@@ -77,14 +75,7 @@ def evaluate(args):
     good_gt_files = [f for f in gt_files if not any(sub in f for sub in ['bad', 'catas', 'ish', 'pred', 'icp', 'refined']) and any(sub in f for sub in ['scan_', 'gt_'])]
 
     eTE_list = []
-    eTE_list_icp = []
     eRE_list = []
-    eRE_list_icp = []
-    eGD_list = []
-    eGD_list_icp = []
-
-    counter_better = 0
-    counter_worse = 0
 
     all_preds_t = []
     all_preds_R = []
@@ -102,16 +93,9 @@ def evaluate(args):
     coverage_t = np.zeros(3)
     coverage_pred_t = np.zeros(3)
 
-    rotation_errors = []
-    rotation_std_errors = []
-    spread_list = []
-    orth_dev_list = []
-    det_dev_list = []
-
     # ---- New Metrics Lists ----
     credible_region_radii = []
     credible_region_coverages = []
-    eaad_list = []
 
     for file in good_gt_files:
         path, gt_file = os.path.split(file)
@@ -164,7 +148,6 @@ def evaluate(args):
         pts_arr = ts
         rots = Rs
 
-
         gt_R1, gt_t = read_transform_file(os.path.join(path, gt_file))
         if np.linalg.det(gt_R1) < 0:
             gt_R1[:, 1] *= -1
@@ -178,8 +161,6 @@ def evaluate(args):
             eRE_list.append(float("inf"))
         else:
             eRE_list.append(min(calculate_eRE(gt_R1, pr_R), calculate_eRE(gt_R1 @ S, pr_R)))
-        eGD_list.append(min(calculate_eGD(gt_R1, pr_R), calculate_eGD(gt_R1 @ S, pr_R)))
-
 
         all_preds_t.append(pts_arr)
         all_preds_R.append(rots)
@@ -199,24 +180,6 @@ def evaluate(args):
             q = sciR.from_matrix(r)
             angs.append(min(geodesic_distance(r, gt_R1), geodesic_distance(r, gt_R1 @ S)))
 
-        rotation_errors.append(np.mean(angs))
-        rotation_std_errors.append(np.std(angs))
-
-        N = rots.shape[0]
-        pairwise_angles = []
-        for i in range(N):
-            for j in range(i+1, N):
-                R1 = sciR.from_matrix(rots[i])
-                R2 = sciR.from_matrix(rots[j])
-                relative = R1.inv() * R2
-                pairwise_angles.append(relative.magnitude())
-        if pairwise_angles:
-            spread_list.append(np.mean(pairwise_angles))
-            counts, _ = np.histogram(pairwise_angles, bins=30)
-            p = counts.astype(float) / counts.sum()
-            p = p[p > 0]
-        else:
-            spread_list.append(0.0)
 
         # ---- NEW METRICS ----
         # Compute mean rotation
@@ -320,8 +283,6 @@ def evaluate(args):
 
     sharp_vec, sharp_dims = compute_sharpness_translation(all_preds_t)
 
-    mean_ang_err = np.mean(rotation_errors)
-    std_ang_err = np.mean(rotation_std_errors)
     sharp_R = compute_sharpness_rotation(all_preds_R, all_gts_R)
 
     if all_kappa_means:
@@ -348,7 +309,6 @@ def evaluate(args):
         uncertainties_t.append(unc)
 
     mean_corr_t = float(spearmanr(errors_t, uncertainties_t).correlation)
-
 
     errors_r = []
     uncertainties_r = []
@@ -449,13 +409,13 @@ def evaluate(args):
 
     print("\n================ END ==================")
 
-        # ---------------- JSON EXPORT ----------------
+    # ---------------- JSON EXPORT ----------------
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
 
     metadata = {
         "timestamp": timestamp,
         "modifications": args.modifications,
-        "mc_samples": args.mc_samples if args.modifications not in ["none", "ensemble"] else None,
+        "mc_samples": args.mc_samples or None,
         "model_name": Path(args.path).name,
         "dataset": Path(args.path).name,
         "num_samples": len(eTE_list),
@@ -480,44 +440,32 @@ def evaluate(args):
             "min": min(eRE_list),
             "max": max(eRE_list),
         },
-        "eGD": {
-            "mean": mean(eGD_list),
-            "std": float(np.std(eGD_list)),
-            "median": median(eGD_list),
-            "min": min(eGD_list),
-            "max": max(eGD_list),
-        },
     }
 
     # ----------- EPISTEMIC -----------
     epistemic_metrics = {
         "translation": {
-            "nll": safe(mean_nll_trans_epi),
-            "sharpness": {
-                "vector": safe(sharp_vec),
-                "per_dim": safe(sharp_dims.tolist()),
-            },
             "coverage": {
                 "gt": (coverage_t / n_samples).tolist(),
                 "pred": (coverage_pred_t / n_samples).tolist(),
             },
+            "sharpness": {
+                "vector": safe(sharp_vec),
+                "per_dim": safe(sharp_dims.tolist()),
+            },
+            "nll": safe(mean_nll_trans_epi),
             "crps": safe(mean_crps_t),
+            "corr": safe(mean_corr_t),
         },
         "rotation": {
-            "nll_matrix_fisher": safe(mean_nll_rot_epi),
-            "mean_error": {
-                "rad": safe(mean_ang_err),
-                "deg": safe(float(np.degrees(mean_ang_err))),
-            },
+            "coverage": safe(float(np.mean(credible_region_coverages))),
             "sharpness": {
                 "rad": safe(sharp_R),
                 "deg": safe(float(np.degrees(sharp_R))),
             },
-            "credible_region": {
-                "radius_rad": safe(float(np.mean(credible_region_radii))),
-                "coverage": safe(float(np.mean(credible_region_coverages))),
-            },
+            "nll_matrix_fisher": safe(mean_nll_rot_epi),
             "crps": safe(mean_crps_r),
+            "corr": safe(mean_corr_r),
         },
     }
 
