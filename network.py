@@ -45,8 +45,8 @@ class Network(nn.Module):
             pretrained_backbone_model  = torchvision.models.resnet50(pretrained=True)
         else:
             raise ValueError(f"Unsupported backbone: {args.backbone}")
-        if args.modifications == "mc_dropout":
-            backbone = insert_block_dropout(backbone, self.p_backbone)
+        if args.modifications == "mc_dropout" and self.p_backbone > 0:
+            pretrained_backbone_model = insert_block_dropout(pretrained_backbone_model, self.p_backbone)
 
         last_feat = list(pretrained_backbone_model.children())[-1].in_features // 2
         self.backbone = nn.Sequential(*list(pretrained_backbone_model.children())[:-3])

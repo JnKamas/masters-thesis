@@ -103,7 +103,7 @@ def remap_bayesian_state_dict(raw_sd, init_sigma=0.1, bayes_type=0):
     return full_sd
 
 
-def remap_dropout_state_dict(base_sd):
+def remap_dropout_state_dict(base_sd, args):
     """
     Remap old baseline checkpoint to new mc_dropout backbone structure.
     - fc_z / fc_y / fc_t: keeps your original mapping rules
@@ -124,18 +124,18 @@ def remap_dropout_state_dict(base_sd):
                 new_sd['.'.join(parts)] = v
                 continue
 
-        # # 2) BACKBONE REMAPPING
-        # if parts[0] == 'backbone' and parts[1].isdigit() and parts[2].isdigit():
-        #     layer_idx = int(parts[1])
-        #     block_idx = int(parts[2])
+        # 2) BACKBONE REMAPPING
+        if args.dropout_prob_backbone > 0 and parts[0] == 'backbone' and parts[1].isdigit() and parts[2].isdigit():
+            layer_idx = int(parts[1])
+            block_idx = int(parts[2])
 
-        #     if layer_idx in (4, 5, 6, 7):
+            if layer_idx in (4, 5, 6, 7):
 
-        #         new_block_idx = block_idx * 2
+                new_block_idx = block_idx * 2
 
-        #         parts[2] = str(new_block_idx)
-        #         new_sd['.'.join(parts)] = v
-        #         continue
+                parts[2] = str(new_block_idx)
+                new_sd['.'.join(parts)] = v
+                continue
 
         new_sd[k] = v
 
@@ -150,7 +150,7 @@ def load_model(args):
         raw_sd = torch.load(args.weights_path, map_location='cpu', weights_only=True)
 
         if args.modifications == "mc_dropout":
-            state_dict = remap_dropout_state_dict(raw_sd)
+            state_dict = remap_dropout_state_dict(raw_sd, args)
         elif args.modifications == "bayesian":
             state_dict = remap_bayesian_state_dict(raw_sd, init_sigma=args.input_sigma, bayes_type=args.bayesian_type)
         else:

@@ -87,7 +87,6 @@ def build_infer_cmd(args, infer_script, weights_path):
         "-dpt", str(args.dropout_prob_trans),
         "-dpr", str(args.dropout_prob_rot),
         "-dpb", str(args.dropout_prob_backbone),
-        "-dp", str(args.dropout_prob),
         "-b", str(args.batch_size),
         "-sn", str(args.sample_nbr),
         "-ccw", str(args.complexity_cost_weight),
