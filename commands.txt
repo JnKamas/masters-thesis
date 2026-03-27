@@ -1,20 +1,11 @@
-python ~/thesis/masters-thesis/train.py -bb resnet34 -iw 516 -ih 386 -b 12 -e 51 -de 1 -lr 2e-4 -w 0.1 -wp ~/thesis/models/quartres_resnet34_synth.pth ~/thesis/large-data/complete/dataset.json
-cp ~/thesis/checkpoints/050.pth ~/thesis/models/ensemble_late_feb/ens01.pth
-
-python ~/thesis/masters-thesis/train.py -bb resnet34 -iw 516 -ih 386 -b 12 -e 51 -de 1 -lr 2e-4 -w 0.1 -wp ~/thesis/models/quartres_resnet34_synth.pth ~/thesis/large-data/complete/dataset.json
-cp ~/thesis/checkpoints/050.pth ~/thesis/models/ensemble_late_feb/ens02.pth
-
-python ~/thesis/masters-thesis/train.py -bb resnet34 -iw 516 -ih 386 -b 12 -e 51 -de 1 -lr 2e-4 -w 0.1 -wp ~/thesis/models/quartres_resnet34_synth.pth ~/thesis/large-data/complete/dataset.json
-cp ~/thesis/checkpoints/050.pth ~/thesis/models/ensemble_late_feb/ens03.pth
-
-python ~/thesis/masters-thesis/train.py -bb resnet34 -iw 516 -ih 386 -b 12 -e 51 -de 1 -lr 2e-4 -w 0.1 -wp ~/thesis/models/quartres_resnet34_synth.pth ~/thesis/large-data/complete/dataset.json
-cp ~/thesis/checkpoints/050.pth ~/thesis/models/ensemble_late_feb/ens04.pth
-
-python ~/thesis/masters-thesis/train.py -bb resnet34 -iw 516 -ih 386 -b 12 -e 51 -de 1 -lr 2e-4 -w 0.1 -wp ~/thesis/models/quartres_resnet34_synth.pth ~/thesis/large-data/complete/dataset.json
-cp ~/thesis/checkpoints/050.pth ~/thesis/models/ensemble_late_feb/ens05.pth
-
-python ~/thesis/masters-thesis/train.py -bb resnet34 -iw 516 -ih 386 -b 12 -e 51 -de 1 -lr 2e-4 -w 0.1 -wp ~/thesis/models/quartres_resnet34_synth.pth ~/thesis/large-data/complete/dataset.json
-cp ~/thesis/checkpoints/050.pth ~/thesis/models/ensemble_late_feb/ens06.pth
-
-python ~/thesis/masters-thesis/train.py -bb resnet34 -iw 516 -ih 386 -b 12 -e 51 -de 1 -lr 2e-4 -w 0.1 -wp ~/thesis/models/quartres_resnet34_synth.pth ~/thesis/large-data/complete/dataset.json
-cp ~/thesis/checkpoints/050.pth ~/thesis/models/ensemble_late_feb/ens07.pth
+python ~/thesis/masters-thesis/run_model.py -mod mc_dropout -dpt 0.1 -dpr 0.1 -dpb 0.1 quartres_resnet34_synth
+python ~/thesis/masters-thesis/run_model.py -mod mc_dropout -dpt 0.1 -dpr 0.1 -dpb 0.1 quartres_resnet34_synth
+python ~/thesis/masters-thesis/run_model.py -mod mc_dropout -dpt 0.1 -dpr 0.1 -dpb 0.1 quartres_resnet34_synth
+python ~/thesis/masters-thesis/run_model.py -mod mc_dropout -dpt 0.1 -dpr 0.1 -dpb 0.1 quartres_resnet34_synth
+python ~/thesis/masters-thesis/run_model.py -mod mc_dropout -dpt 0.1 -dpr 0.1 -dpb 0.1 quartres_resnet34_synth
+python ~/thesis/masters-thesis/run_model.py -mod mc_dropout -dpt 0.1 -dpr 0.1 -dpb 0.1 quartres_resnet34_synth
+python ~/thesis/masters-thesis/run_model.py -mod mc_dropout -dpt 0.1 -dpr 0.1 -dpb 0.1 quartres_resnet34_synth
+python ~/thesis/masters-thesis/run_model.py -mod mc_dropout -dpt 0.1 -dpr 0.1 -dpb 0.1 quartres_resnet34_synth
+python ~/thesis/masters-thesis/run_model.py -mod mc_dropout -dpt 0.1 -dpr 0.1 -dpb 0.1 quartres_resnet34_synth
+python ~/thesis/masters-thesis/run_model.py -mod mc_dropout -dpt 0.1 -dpr 0.1 -dpb 0.1 quartres_resnet34_synth
+python ~/thesis/masters-thesis/merge_jsons.py
