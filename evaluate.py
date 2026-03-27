@@ -6,7 +6,6 @@ from pathlib import Path
 import json
 import numpy as np
 from statistics import mean, median
-from scipy.linalg import logm, svd
 from scipy.spatial.transform import Rotation as sciR
 from scipy.stats import spearmanr
 import warnings
@@ -140,9 +139,7 @@ def evaluate(args):
 
             all_sigmas.append(sigmas)
 
-        # ---- shared logic (already exists) ----
         mean_t = np.mean(ts, axis=0)
-        std_t = np.std(ts, axis=0)
         pr_t = mean_t
         pr_R = mean_rotation_SVD(Rs)
         pts_arr = ts
@@ -281,9 +278,6 @@ def evaluate(args):
     mean_crps_t = float(np.mean(crps_t_list))
     mean_crps_r = float(np.mean(crps_r_list))
 
-    sharp_vec, sharp_dims = compute_sharpness_translation(all_preds_t)
-
-    sharp_R = compute_sharpness_rotation(all_preds_R, all_gts_R)
 
     if all_kappa_means:
         all_kappa_means_arr = np.stack(all_kappa_means)
