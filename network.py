@@ -5,26 +5,6 @@ import torchvision
 from blitz.modules import BayesianLinear
 from blitz.utils import variational_estimator
 
-
-# ------------------------------------------------------------
-# Add dropout after every ResNet block WITHOUT changing structure
-# ------------------------------------------------------------
-def insert_block_dropout(backbone, p):
-    """
-    Inserts nn.Dropout(p) after each residual block
-    in layer1, layer2, layer3, layer4.
-    Matches your requirement 1.
-    """
-    for layer_name in ["layer1", "layer2", "layer3", "layer4"]:
-        layer = getattr(backbone, layer_name)
-        new_seq = []
-        for block in layer:
-            new_seq.append(block)
-            new_seq.append(nn.Dropout(p))
-        setattr(backbone, layer_name, nn.Sequential(*new_seq))
-    return backbone
-
-
 @variational_estimator
 class Network(nn.Module):
     def __init__(self, args):
@@ -45,8 +25,6 @@ class Network(nn.Module):
             pretrained_backbone_model  = torchvision.models.resnet50(pretrained=True)
         else:
             raise ValueError(f"Unsupported backbone: {args.backbone}")
-        if args.modifications == "mc_dropout" and self.p_backbone > 0:
-            pretrained_backbone_model = insert_block_dropout(pretrained_backbone_model, self.p_backbone)
 
         last_feat = list(pretrained_backbone_model.children())[-1].in_features // 2
         self.backbone = nn.Sequential(*list(pretrained_backbone_model.children())[:-3])
@@ -120,6 +98,7 @@ class Network(nn.Module):
             self.fc_z = make_head(last_feat, 3)
             self.fc_y = make_head(last_feat, output_feat_rot)
             self.fc_t = make_head(last_feat, outpot_feat_trans)
+        self.post_dropout = nn.Dropout(self.p_backbone)
     
 
     # ------------------------------------------------------------
@@ -131,6 +110,8 @@ class Network(nn.Module):
         # Global average pooling
         x = torch.mean(x, dim=-1)
         x = torch.mean(x, dim=-1)
+
+        x = self.post_dropout(x)
 
         z = self.fc_z(x)
         y = self.fc_y(x)

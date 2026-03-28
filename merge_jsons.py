@@ -16,10 +16,10 @@ elif len(files) < EXPECTED:
     exit()
 
 i = 1
-while os.path.exists(f"experiment_{i}"):
+while os.path.exists(f"final_results/experiment_{i}"):
     i += 1
 
-exp_dir = f"experiment_{i}"
+exp_dir = f"final_results/experiment_{i}"
 os.makedirs(exp_dir)
 
 moved_files = []
