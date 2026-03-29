@@ -87,7 +87,7 @@ def train(args):
         random_rot=args.random_rot,
         preload=not args.no_preload,
     )
-    if args.modifications == "ensemble":
+    if args.modifications == "ensemble" and args.ensemble_type > 1:
         indices = np.random.choice(len(train_dataset), size=len(train_dataset), replace=True)
         boot_dataset = Subset(train_dataset, indices)
 

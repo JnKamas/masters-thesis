@@ -64,6 +64,8 @@ def build_parser(proj_root):
 
     parser.add_argument("-bs", "--bootstrap_samples", type=int, default=0,
                         help="Number of bootstrapped ensemble models, 0 to disable")
+    parser.add_argument("-et", "--ensemble_type", type=int, default=1,
+                        help="Ensemble type")
 
     parser.add_argument("-sn", "--sample_nbr", type=int, default=200,
                         help="Sample number for MC Dropout")
@@ -96,6 +98,7 @@ def build_infer_cmd(args, infer_script, weights_path):
         "-ccw", str(args.complexity_cost_weight),
         "-bt", str(args.bayesian_type),
         "-is", str(args.input_sigma),
+        "-et", str(args.ensemble_type),
         "--weights_path", weights_path,
         "--mc_samples", str(args.mc_samples),
         "--bootstrap_samples", str(args.bootstrap_samples),
