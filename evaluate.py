@@ -51,7 +51,8 @@ def get_mc_predictions(path, number, mc_samples):
         fname = f'prediction{i}_scan_{number}.txt'
         fpath = os.path.join(path, fname)
         if not os.path.isfile(fpath):
-            return None, None, None
+            print(f"MC prediction file not found: {fpath}")
+            return None, None, None, None
 
         R, t = read_transform_file(fpath)
         kappa = read_kappa_from_prediction_file(fpath)
@@ -101,8 +102,9 @@ def evaluate(args):
         index = gt_file.rfind("_")
         number = gt_file[index + 1:-4]
 
-        if args.modifications in {"mc_dropout", "bayesian", "ensemble", "ensemble_mc_dropout"}:
-            Rs, ts, kappas, sigmas = get_mc_predictions(path, number, args.mc_samples)   
+        if args.modifications in {"mc_dropout", "bayesian", "ensemble"}:
+            mc_samples = args.mc_samples if args.modifications in {"mc_dropout", "bayesian"} else args.bootstrap_samples
+            Rs, ts, kappas, sigmas = get_mc_predictions(path, number, mc_samples)   
             if Rs is None:
                 print(f"Some samples missing for {number}, skipping.")
                 continue
@@ -409,7 +411,7 @@ def evaluate(args):
     metadata = {
         "timestamp": timestamp,
         "modifications": args.modifications,
-        "mc_samples": args.mc_samples or None,
+        "mc_samples": args.mc_samples if args.modifications in {"mc_dropout", "bayesian"} else args.bootstrap_samples if args.modifications == "ensemble" else None,
         "model_name": Path(args.path).name,
         "dataset": Path(args.path).name,
         "num_samples": len(eTE_list),
@@ -428,11 +430,20 @@ def evaluate(args):
             "max": max(eTE_list),
         },
         "eRE": {
-            "mean": mean(eRE_list),
-            "std": float(np.std(eRE_list)),
-            "median": median(eRE_list),
-            "min": min(eRE_list),
-            "max": max(eRE_list),
+            "rad": {
+                "mean": mean(eRE_list),
+                "std": float(np.std(eRE_list)),
+                "median": median(eRE_list),
+                "min": min(eRE_list),
+                "max": max(eRE_list),
+            },
+            "deg": {
+                "mean": float(np.degrees(mean(eRE_list))),
+                "std": float(np.degrees(np.std(eRE_list))),
+                "median": float(np.degrees(median(eRE_list))),
+                "min": float(np.degrees(min(eRE_list))),
+                "max": float(np.degrees(max(eRE_list))),
+            },
         },
     }
 

@@ -58,7 +58,7 @@ def infer(args, export_to_folder=True):
     weights_path = getattr(args, 'weights', None) \
                 or getattr(args, 'weights_path', None) \
                 or getattr(args, 'resume', None)
-    if args.modifications in ["ensemble", "ensemble_mc_dropout"] and weights_path:
+    if args.modifications == "ensemble" and weights_path:
         # models/ensemble1/modelA.pth → ensemble1
         model_name = os.path.basename(os.path.dirname(weights_path))
     elif weights_path:
@@ -91,7 +91,7 @@ def infer(args, export_to_folder=True):
     np.set_printoptions(suppress=True)
 
     with torch.no_grad():
-        if args.modifications in ["mc_dropout", "ensemble_mc_dropout"]:
+        if args.modifications == "mc_dropout":
             model.train()
             enable_dropout(model)
 
@@ -111,7 +111,7 @@ def infer(args, export_to_folder=True):
 
         for sample in progress:
 
-            if args.modifications in {"mc_dropout", "bayesian", "ensemble_mc_dropout"}:
+            if args.modifications in {"mc_dropout", "bayesian"}:
                 n_passes = args.mc_samples
             else:
                 n_passes = 1

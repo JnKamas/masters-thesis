@@ -3,6 +3,7 @@ import glob
 import numpy as np
 import os
 import shutil
+import sys
 
 EXPECTED = 10
 
@@ -15,11 +16,16 @@ elif len(files) < EXPECTED:
     print(f"Error: Found only {len(files)} files, expected {EXPECTED}. Make sure all evaluations are completed.")
     exit()
 
-i = 1
-while os.path.exists(f"final_results/experiment_{i}"):
-    i += 1
+if len(sys.argv) < 2:
+    print("Usage: python merge_jsons.py <experiment_name>")
+    exit()
 
-exp_dir = f"final_results/experiment_{i}"
+exp_name = sys.argv[1]
+exp_dir = f"final_results/{exp_name}"
+
+if os.path.exists(exp_dir):
+    shutil.rmtree(exp_dir, ignore_errors=True)
+
 os.makedirs(exp_dir)
 
 moved_files = []
@@ -31,7 +37,7 @@ for f in files:
 def extract(d):
     return {
         "eTE": d["results"]["pose"]["eTE"]["mean"],
-        "eRE": d["results"]["pose"]["eRE"]["mean"],
+        "eRE": d["results"]["pose"]["eRE"]["deg"]["mean"],
 
         "cov_t": np.mean(d["results"]["epistemic"]["translation"]["coverage"]["gt"]),
         "sharp_t": d["results"]["epistemic"]["translation"]["sharpness"]["vector"],
@@ -40,7 +46,7 @@ def extract(d):
         "corr_t": d["results"]["epistemic"]["translation"]["corr"],
 
         "cov_r": d["results"]["epistemic"]["rotation"]["coverage"],
-        "sharp_r": d["results"]["epistemic"]["rotation"]["sharpness"]["rad"],
+        "sharp_r": d["results"]["epistemic"]["rotation"]["sharpness"]["deg"],
         "nll_r": d["results"]["epistemic"]["rotation"]["nll_matrix_fisher"],
         "crps_r": d["results"]["epistemic"]["rotation"]["crps"],
         "corr_r": d["results"]["epistemic"]["rotation"]["corr"],
@@ -73,3 +79,15 @@ with open(out_path, "w") as f:
         f.write(line + "\n")
 
 print(f"\nSaved to {out_path}")
+
+export_path = os.path.join("final_results", "export.txt")
+
+with open(out_path, "r") as src:
+    content = src.read()
+
+with open(export_path, "a") as dst:
+    dst.write(f"{exp_name}\n")
+    dst.write(content)
+    dst.write("\n")  # spacing between experiments
+
+print(f"\nSaved to {export_path}")

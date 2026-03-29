@@ -4,6 +4,7 @@ import sys
 import argparse
 import subprocess
 import shutil
+import numpy as np
 
 
 # ------------------------------------------------------------
@@ -61,6 +62,9 @@ def build_parser(proj_root):
     parser.add_argument("-dpb", "--dropout_prob_backbone", type=float, default=0.0,
                         help="Dropout probability for ResNet backbone residual blocks")
 
+    parser.add_argument("-bs", "--bootstrap_samples", type=int, default=0,
+                        help="Number of bootstrapped ensemble models, 0 to disable")
+
     parser.add_argument("-sn", "--sample_nbr", type=int, default=200,
                         help="Sample number for MC Dropout")
     parser.add_argument("-ccw", "--complexity_cost_weight", type=float, default=0.001,
@@ -94,6 +98,7 @@ def build_infer_cmd(args, infer_script, weights_path):
         "-is", str(args.input_sigma),
         "--weights_path", weights_path,
         "--mc_samples", str(args.mc_samples),
+        "--bootstrap_samples", str(args.bootstrap_samples),
         args.dataset,
     ]
 
@@ -117,9 +122,10 @@ def build_eval_cmd(args, eval_script, inference_output_dir):
             if f.endswith(".pth")
         ])
 
-    cmd = [
+    cmd = [ 
         sys.executable, eval_script,
         "--mc_samples", str(mc_samples),
+        "--bootstrap_samples", str(args.bootstrap_samples),
         inference_output_dir
     ]
 
@@ -233,7 +239,7 @@ def main():
     # -----------------------------
     if not args.eval_only:
 
-        if args.modifications in ["ensemble", "ensemble_mc_dropout"]:
+        if args.modifications == "ensemble":
 
             ensemble_models_dir = os.path.join(args.models_dir, args.model_name)
             ensemble_out_dir = os.path.join(args.inference_dir, args.model_name)
@@ -242,13 +248,22 @@ def main():
                 raise FileNotFoundError(f"Ensemble folder not found: {ensemble_models_dir}")
 
             ckpts = sorted(f for f in os.listdir(ensemble_models_dir) if f.endswith(".pth"))
+
+            # ensemble bootstrap
+            if args.bootstrap_samples > 0:
+                B = args.bootstrap_samples
+                M = len(ckpts)
+
+                idx = np.random.choice(M, B, replace=True)
+                ckpts = [ckpts[i] for i in idx]
+
             if not ckpts:
                 raise RuntimeError(f"No .pth files in ensemble folder {ensemble_models_dir}")
 
             os.makedirs(ensemble_out_dir, exist_ok=True)
 
-            for ckpt in ckpts:
-                member_name = os.path.splitext(ckpt)[0]   # ens01, ens02, ...
+            for mi, ckpt in enumerate(ckpts):
+                member_name = f"{os.path.splitext(ckpt)[0]}_{mi}"
                 member_out_dir = os.path.join(ensemble_out_dir, member_name)
                 os.makedirs(member_out_dir, exist_ok=True)
 

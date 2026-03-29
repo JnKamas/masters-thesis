@@ -1,4 +1,5 @@
 import os
+from torch.utils.data import Subset
 import numpy as np
 import torch
 from torch.utils.data import DataLoader
@@ -86,12 +87,23 @@ def train(args):
         random_rot=args.random_rot,
         preload=not args.no_preload,
     )
-    train_loader = DataLoader(
-        train_dataset,
-        batch_size=args.batch_size,
-        shuffle=True,
-        num_workers=args.workers,
-    )
+    if args.modifications == "ensemble":
+        indices = np.random.choice(len(train_dataset), size=len(train_dataset), replace=True)
+        boot_dataset = Subset(train_dataset, indices)
+
+        train_loader = DataLoader(
+            boot_dataset,
+            batch_size=args.batch_size,
+            shuffle=True,
+            num_workers=args.workers,
+        )
+    else:
+        train_loader = DataLoader(
+            train_dataset,
+            batch_size=args.batch_size,
+            shuffle=True,
+            num_workers=args.workers,
+        )
 
     val_dataset = Dataset(
         args.path,
