@@ -34,8 +34,22 @@ def read_transform_file(file):
                     [float(P[2]), float(P[6]), float(P[10])]])
         t = np.array([float(P[12]), float(P[13]), float(P[14])])
         return R, t
+
+def canonicalize_rotation(R):
+    # same logic as train
+    if R[0, 1] > 0:
+        return R
+    elif R[0, 1] < 0:
+        return R @ Rs
+    elif R[1, 1] > 0:
+        return R
+    elif R[1, 1] < 0:
+        return R @ Rs
+    else:
+        return R  # fallback
         
 def mean_rotation_SVD(Rs):
+    Rs = [canonicalize_rotation(R) for R in Rs]
     M = np.mean(Rs, axis=0)
     U, _, Vt = np.linalg.svd(M)
     R_mean = np.dot(U, Vt)
@@ -169,6 +183,42 @@ def matrix_fisher_nll(R_pred, R_gt, kappa, eps=1e-8):
     # NLL
     return -align + log_c
 
+def translation_nll_diag(mu, var, gt, eps=1e-8):
+    """
+    Diagonal Gaussian NLL per-dimension (returns scalar mean over dims)
+    mu:  (3,)
+    var: (3,)
+    gt:  (3,)
+    """
+    nll = 0.5 * (np.log(var + eps) + ((gt - mu) ** 2) / (var + eps))
+    return float(np.mean(nll))
+
+
+def translation_nll_full(mu, preds_t, gt, eps=1e-8):
+    """
+    Full covariance Gaussian NLL
+    mu:      (3,)
+    preds_t: (N,3) samples
+    gt:      (3,)
+    """
+
+    diff = preds_t - mu
+    Sigma = diff.T @ diff / (len(preds_t) - 1)
+
+    # numerical stability
+    Sigma = Sigma + eps * np.eye(3)
+
+    inv_Sigma = np.linalg.inv(Sigma)
+    det_Sigma = np.linalg.det(Sigma)
+
+    diff_gt = gt - mu
+
+    nll = 0.5 * (
+        np.log((2 * np.pi) ** 3 * det_Sigma) +
+        diff_gt.T @ inv_Sigma @ diff_gt
+    )
+
+    return float(nll)
 
 # ---- SO(3) Metrics Helper Functions ----
 

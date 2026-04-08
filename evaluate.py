@@ -244,16 +244,15 @@ def evaluate(args):
             var_alea = np.zeros_like(var_epi)
 
         # ---- separate NLLs ----
-        nll_epi = 0.5 * (np.log(var_epi + eps) + ((gt_t - mu) ** 2) / (var_epi + eps))
-        nll_alea = 0.5 * (np.log(var_alea + eps) + ((gt_t - mu) ** 2) / (var_alea + eps))
+        nll_epi = translation_nll_full(mu, preds_t, gt_t, eps)
+        nll_alea = translation_nll_diag(mu, var_alea, gt_t, eps)
 
-        # total variance
-        var_total = var_epi + var_alea + eps
-        nll_total = 0.5 * (np.log(var_total) + ((gt_t - mu) ** 2) / var_total)
+        var_total = var_epi + var_alea
+        nll_total = translation_nll_diag(mu, var_total, gt_t, eps)
 
-        nll_epi_list.append(np.mean(nll_epi))
-        nll_alea_list.append(np.mean(nll_alea))
-        nll_total_list.append(np.mean(nll_total))
+        nll_epi_list.append(nll_epi)
+        nll_alea_list.append(nll_alea)
+        nll_total_list.append(nll_total)
 
     mean_nll_total = float(np.mean(nll_total_list))
     mean_nll_trans_epi   = float(np.mean(nll_epi_list))
