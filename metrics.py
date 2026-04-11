@@ -36,17 +36,20 @@ def read_transform_file(file):
         return R, t
 
 def canonicalize_rotation(R):
+    S = sciR.from_euler('z', np.pi).as_matrix()
     # same logic as train
     if R[0, 1] > 0:
         return R
     elif R[0, 1] < 0:
-        return R @ Rs
+        return R @ S
     elif R[1, 1] > 0:
         return R
     elif R[1, 1] < 0:
-        return R @ Rs
+        return R @ S
+    elif R[2,1] > 0:
+        return R
     else:
-        return R  # fallback
+        return R @ S
         
 def mean_rotation_SVD(Rs):
     Rs = [canonicalize_rotation(R) for R in Rs]
