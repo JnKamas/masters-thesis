@@ -85,7 +85,9 @@ set -e
 # python ~/thesis/masters-thesis/merge_jsons.py ENS3_P_001
 # for i in {1..10}; do python ~/thesis/masters-thesis/run_model.py -mod ensemble -bs 25 FINAL_ensemble_mod3_002; done
 # python ~/thesis/masters-thesis/merge_jsons.py ENS3_P_002
-for i in {1..4}; do python ~/thesis/masters-thesis/run_model.py -mod ensemble -bs 25 FINAL_ensemble_mod3_005; done
-python ~/thesis/masters-thesis/merge_jsons.py ENS3_P_005
-for i in {1..10}; do python ~/thesis/masters-thesis/run_model.py -mod ensemble -bs 25 FINAL_ensemble_mod3_010; done
-python ~/thesis/masters-thesis/merge_jsons.py ENS3_P_010
+# for i in {1..10}; do python ~/thesis/masters-thesis/run_model.py -mod ensemble -bs 25 FINAL_ensemble_mod3_005; done
+# python ~/thesis/masters-thesis/merge_jsons.py ENS3_P_005
+# for i in {1..10}; do python ~/thesis/masters-thesis/run_model.py -mod ensemble -bs 25 FINAL_ensemble_mod3_010; done
+# python ~/thesis/masters-thesis/merge_jsons.py ENS3_P_010
+
+for i in {1..10}; do python ~/thesis/masters-thesis/train.py -bb resnet34 -iw 516 -ih 386 -b 12 -e 500 -de 10 -lr 1e-3 -w 0.1 -ccw 1e-4 -is 0.1 -bt 0 -sn 5 -mod bayesian ~/thesis/large-data/complete/dataset.json; done

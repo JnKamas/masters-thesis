@@ -197,7 +197,12 @@ def train(args):
                 last_outputs = {}
 
                 def wrapped_loss(preds, targets):
-                    pred_z, pred_y, pred_t, s_R, s_t = preds
+                    if use_aleatoric:
+                        pred_z, pred_y, pred_t, s_R, s_t = preds
+                    else:
+                        pred_z, pred_y, pred_t = preds
+                        s_R, s_t = None, None
+
                     gt_z, gt_y, gt_t = targets
 
                     total, loss_rot, loss_t, loss_z, loss_y = compute_loss(
