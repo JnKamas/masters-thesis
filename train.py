@@ -225,6 +225,20 @@ def train(args):
                     complexity_cost_weight=args.complexity_cost_weight or 1e-5,
                 )
 
+                with torch.no_grad():
+                    if args.use_aleatoric:
+                        pred_z, pred_y, pred_t, s_R, s_t = model(xyz)
+                        data_loss, loss_rot_tmp, loss_t_tmp, loss_z_tmp, loss_y_tmp = compute_loss(
+                            pred_z, pred_y, pred_t, s_R, s_t,
+                            gt_z, gt_y, gt_t, sample
+                        )
+                    else:
+                        pred_z, pred_y, pred_t = model(xyz)
+                        data_loss, loss_rot_tmp, loss_t_tmp, loss_z_tmp, loss_y_tmp = compute_loss(
+                            pred_z, pred_y, pred_t, None, None,
+                            gt_z, gt_y, gt_t, sample
+                        )
+
                 loss_rot = last_outputs.get("loss_rot")
                 loss_t   = last_outputs.get("loss_t")
                 loss_z   = last_outputs.get("loss_z")
@@ -250,7 +264,7 @@ def train(args):
 
             rot_loss = (loss_z + loss_y) if loss_z is not None else loss_rot
 
-            epoch_train_loss.append(loss.item())
+            epoch_train_loss.append(data_loss.item() if is_bayesian else loss.item())
             epoch_train_rot.append(rot_loss.item())
             epoch_train_t.append((loss_t / args.weight).item())
 
