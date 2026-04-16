@@ -75,6 +75,9 @@ def build_parser(proj_root):
                         help="Bayesian type")
     parser.add_argument("-is", "--input_sigma", type=float, default=0.1,
                         help="Input sigma for Bayesian layers")
+    parser.add_argument("-ale", "--use_aleatoric", action="store_true",
+                        help="Use aleatoric uncertainty")
+
 
     parser.add_argument("--eval_only", type=bool, default=False,
                         help="If True, only runs evaluation on existing inference results")
@@ -99,6 +102,7 @@ def build_infer_cmd(args, infer_script, weights_path):
         "-bt", str(args.bayesian_type),
         "-is", str(args.input_sigma),
         "-et", str(args.ensemble_type),
+        *(["--use_aleatoric"] if args.use_aleatoric else []),
         "--weights_path", weights_path,
         "--mc_samples", str(args.mc_samples),
         "--bootstrap_samples", str(args.bootstrap_samples),
@@ -134,6 +138,9 @@ def build_eval_cmd(args, eval_script, inference_output_dir):
 
     if args.modifications:
         cmd += ["--modifications", args.modifications]
+
+    if args.use_aleatoric:
+        cmd += ["--use_aleatoric"]
 
     return cmd
 

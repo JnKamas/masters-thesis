@@ -117,9 +117,12 @@ set -e
 # for i in {1..10}; do python ~/thesis/masters-thesis/run_model.py -mod bayesian -sn 5 FINAL_CCW3_BATCH5; done
 # python ~/thesis/masters-thesis/merge_jsons.py FINAL_CCW3_BATCH5
 
-for i in {1..10}; do python ~/thesis/masters-thesis/run_model.py -mod bayesian -sn 5 FINAL_CCW5_BATCH12; done
-python ~/thesis/masters-thesis/merge_jsons.py FINAL_CCW5_BATCH12
-for i in {1..10}; do python ~/thesis/masters-thesis/run_model.py -mod bayesian -sn 5 FINAL_CCW4_BATCH12; done
-python ~/thesis/masters-thesis/merge_jsons.py FINAL_CCW4_BATCH12
-for i in {1..10}; do python ~/thesis/masters-thesis/run_model.py -mod bayesian -sn 5 FINAL_CCW3_BATCH12; done
-python ~/thesis/masters-thesis/merge_jsons.py FINAL_CCW3_BATCH12
+# for i in {1..10}; do python ~/thesis/masters-thesis/run_model.py -mod bayesian -sn 5 FINAL_CCW5_BATCH12; done
+# python ~/thesis/masters-thesis/merge_jsons.py FINAL_CCW5_BATCH12
+# for i in {1..10}; do python ~/thesis/masters-thesis/run_model.py -mod bayesian -sn 5 FINAL_CCW4_BATCH12; done
+# python ~/thesis/masters-thesis/merge_jsons.py FINAL_CCW4_BATCH12
+# for i in {1..10}; do python ~/thesis/masters-thesis/run_model.py -mod bayesian -sn 5 FINAL_CCW3_BATCH12; done
+# python ~/thesis/masters-thesis/merge_jsons.py FINAL_CCW3_BATCH12
+
+# for i in {1..10}; do python ~/thesis/masters-thesis/run_model.py -ale FINAL_ALEATORIC; done
+# python ~/thesis/masters-thesis/merge_jsons.py FINAL_ALEATORIC

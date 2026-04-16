@@ -124,33 +124,49 @@ def crps_rotation(R_samples, R_gt):
 
     return float(np.mean(crps_vals))
 
-def compute_sharpness_translation(all_preds_t):
+def compute_sharpness_translation(all_preds_t, all_sigmas=None, use_aleatoric=False):
     """
-    Computes the average predicted uncertainty magnitude (Sharpness) for translation.
-    all_preds_t: list of np.arrays, each [K, 3] (MC dropout samples for one item)
-    Returns: scalar (mean sharpness in mm), and per-dimension values
+    Sharpness:
+    - epistemic → std over samples
+    - aleatoric → predicted sigma
     """
-    # Standard deviation per sample, per axis
-    stds = np.stack([np.std(p, axis=0) for p in all_preds_t])  # [N, 3]
-    # Mean L2-norm of stds (vector sharpness)
-    sharpness_vec = np.mean(np.linalg.norm(stds, axis=1)) / 10 # convert mm to cm
-    # Mean per-dimension sharpness (macro-style)
-    sharpness_dims = np.mean(stds, axis=0)
-    return float(sharpness_vec), sharpness_dims
 
-def compute_sharpness_rotation(all_preds_R, all_gts_R=None):
-    """
-    Computes average predicted rotation uncertainty (radians).
-    all_preds_R: list of np.arrays, each [K, 3x3]
-    all_gts_R: obsolete. TODO remove from flows that call this
-    """
-    sharp_list = []
-    for Rs in all_preds_R:
-        mean_R = mean_rotation_SVD(Rs)
-        errs = [np.arccos(np.clip((np.trace(mean_R.T @ R) - 1) / 2, -1, 1)) for R in Rs]
-        sharp_list.append(np.std(errs))
-    return float(np.mean(sharp_list))
-    
+    if use_aleatoric:
+        sigma_all = np.concatenate(all_sigmas, axis=0)  # [N,3]
+
+        sharpness_vec = np.mean(np.linalg.norm(sigma_all, axis=1)) / 10
+        sharpness_dims = np.mean(sigma_all, axis=0)
+
+        return float(sharpness_vec), sharpness_dims
+
+    else:
+        stds = np.stack([np.std(p, axis=0) for p in all_preds_t])
+
+        sharpness_vec = np.mean(np.linalg.norm(stds, axis=1)) / 10
+        sharpness_dims = np.mean(stds, axis=0)
+
+        return float(sharpness_vec), sharpness_dims
+
+def compute_sharpness_rotation(all_preds_R, all_kappas=None, use_aleatoric=False):
+    if use_aleatoric:
+        kappas = np.concatenate(all_kappas, axis=0)  # (N,)
+
+        # inverse concentration → dispersion
+        sharpness = np.mean(1.0 / (kappas + 1e-6))
+
+        return float(sharpness)
+
+    else:
+        sharp_list = []
+        for Rs in all_preds_R:
+            mean_R = mean_rotation_SVD(Rs)
+            errs = [
+                np.arccos(np.clip((np.trace(mean_R.T @ R) - 1) / 2, -1, 1))
+                for R in Rs
+            ]
+            sharp_list.append(np.std(errs))
+
+        return float(np.mean(sharp_list))
 
 
 # ChatGPT says this: We use a simplified isotropic approximation of the normalization constant.

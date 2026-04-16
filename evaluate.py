@@ -70,7 +70,7 @@ def get_mc_predictions(path, number, mc_samples):
     return np.stack(Rs), np.stack(ts), np.stack(kappas), np.stack(sigmas)
 
 def evaluate(args):
-    print(args.path)
+    print("Aleatoric Uncertainty Enabled:", args.use_aleatoric)
     gt_files = glob.iglob(args.path + '/**/*.txt', recursive=True)
     good_gt_files = [f for f in gt_files if not any(sub in f for sub in ['bad', 'catas', 'ish', 'pred', 'icp', 'refined']) and any(sub in f for sub in ['scan_', 'gt_'])]
 
@@ -201,16 +201,14 @@ def evaluate(args):
         d2 = geodesic_distance(gt_R1 @ S, R_bar_so3)
         gt_R_best = gt_R1 if d1 <= d2 else (gt_R1 @ S)
 
-        # --- ALEATORIC NLL ---
         if args.use_aleatoric:
             kappa_alea = np.mean(kappas, axis=0)
             nll_alea = matrix_fisher_nll(R_bar_so3, gt_R_best, kappa_alea)
             rotation_nll_aleatoric.append(nll_alea)
-
-        # --- EPISTEMIC NLL ---
-        kappa_epi = estimate_isotropic_kappa_from_samples(rots)
-        nll_epi = matrix_fisher_nll(R_bar_so3, gt_R_best, kappa_epi)
-        rotation_nll_epistemic.append(nll_epi)
+        else:
+            kappa_epi = estimate_isotropic_kappa_from_samples(rots)
+            nll_epi = matrix_fisher_nll(R_bar_so3, gt_R_best, kappa_epi)
+            rotation_nll_epistemic.append(nll_epi)
 
     # ----------- Uncertainty summary -----------
     all_preds_t_stack = np.concatenate(all_preds_t, axis=0)
@@ -226,45 +224,38 @@ def evaluate(args):
     # Negative Log Likelihood (NLL) translation
     eps = 1e-8
 
-    nll_total_list = []
-    nll_epi_list = []
-    nll_alea_list = []
+    if args.use_aleatoric:
+        nll_alea_list = []
 
-    for preds_t, sigmas_t, gt_t in zip(all_preds_t, all_sigmas, all_gts_t):
-
-        mu = np.mean(preds_t, axis=0)
-
-        # epistemic variance
-        var_epi = np.var(preds_t, axis=0)
-
-        # aleatoric variance
-        if args.use_aleatoric:
+        for preds_t, sigmas_t, gt_t in zip(all_preds_t, all_sigmas, all_gts_t):
+            mu = np.mean(preds_t, axis=0)
             var_alea = np.mean(sigmas_t**2, axis=0)
-        else:
-            var_alea = np.zeros_like(var_epi)
+            nll_alea = translation_nll_diag(mu, var_alea, gt_t, eps)
+            nll_alea_list.append(nll_alea)
 
-        # ---- separate NLLs ----
-        nll_epi = translation_nll_full(mu, preds_t, gt_t, eps)
-        nll_alea = translation_nll_diag(mu, var_alea, gt_t, eps)
+        mean_nll_trans_alea = float(np.mean(nll_alea_list))
 
-        var_total = var_epi + var_alea
-        nll_total = translation_nll_diag(mu, var_total, gt_t, eps)
+    else:
+        nll_epi_list = []
 
-        nll_epi_list.append(nll_epi)
-        nll_alea_list.append(nll_alea)
-        nll_total_list.append(nll_total)
+        for preds_t, gt_t in zip(all_preds_t, all_gts_t):
+            mu = np.mean(preds_t, axis=0)
+            nll_epi = translation_nll_full(mu, preds_t, gt_t, eps)
+            nll_epi_list.append(nll_epi)
 
-    mean_nll_total = float(np.mean(nll_total_list))
-    mean_nll_trans_epi   = float(np.mean(nll_epi_list))
-    mean_nll_trans_alea  = float(np.mean(nll_alea_list))
+        mean_nll_trans_epi = float(np.mean(nll_epi_list))
 
     crps_t_list = []
     crps_r_list = []
 
-    for preds_t, preds_R, gt_t, gt_R in zip(all_preds_t, all_preds_R, all_gts_t, all_gts_R):
-
+    for idx, (preds_t, preds_R, gt_t, gt_R) in enumerate(zip(all_preds_t, all_preds_R, all_gts_t, all_gts_R)):        
         mu_t = np.mean(preds_t, axis=0)
-        sigma_t = np.std(preds_t, axis=0)
+
+        if args.use_aleatoric:
+            sigmas_t = all_sigmas[idx]
+            sigma_t = np.sqrt(np.mean(sigmas_t**2, axis=0))
+        else:
+            sigma_t = np.std(preds_t, axis=0)
 
         crps_t = crps_translation(mu_t[None, :], sigma_t[None, :], gt_t[None, :])
         crps_t_list.append(crps_t)
@@ -291,11 +282,16 @@ def evaluate(args):
     errors_t = []
     uncertainties_t = []
 
-    for preds_t, gt_t in zip(all_preds_t, all_gts_t):
+    for idx, (preds_t, gt_t) in enumerate(zip(all_preds_t, all_gts_t)):
         preds_t_arr = np.array(preds_t)
 
         mu = np.mean(preds_t_arr, axis=0)
-        sigma = np.std(preds_t_arr, axis=0)
+
+        if args.use_aleatoric:
+            sigmas_t = all_sigmas[idx]
+            sigma = np.sqrt(np.mean(sigmas_t**2, axis=0))
+        else:
+            sigma = np.std(preds_t_arr, axis=0)
 
         err = np.linalg.norm(mu - gt_t)
         unc = np.linalg.norm(sigma)
@@ -325,6 +321,22 @@ def evaluate(args):
         uncertainties_r.append(unc)
 
     mean_corr_r = float(spearmanr(errors_r, uncertainties_r).correlation)
+
+    if args.use_aleatoric:
+        print("\n=== ALEATORIC PARAMETERS ===")
+
+        sigma_all = np.concatenate(all_sigmas, axis=0)  # (N,3)
+
+        sigma_mean = np.mean(sigma_all, axis=0)
+        sigma_std  = np.std(sigma_all, axis=0)
+
+        for j in range(3):
+            print(f" sigma_t[{j}]: {sigma_mean[j]:.4f} ± {sigma_std[j]:.4f}")
+
+        print(f" sigma_t_norm: {np.mean(np.linalg.norm(sigma_all, axis=1)):.4f}")
+
+        if all_kappa_means:
+            print(f" kappa (rotation): {np.mean(all_kappa_means):.4f} ± {np.std(all_kappa_means):.4f}")
 
     print("Translation Uncertainty:")
     for j in range(3):
@@ -367,8 +379,16 @@ def evaluate(args):
 
     print("\n================ 3.3 SHARPNESS ================")
 
-    sharp_vec, sharp_dims = compute_sharpness_translation(all_preds_t)
-    sharp_R = compute_sharpness_rotation(all_preds_R, all_gts_R)
+    sharp_vec, sharp_dims = compute_sharpness_translation(
+        all_preds_t,
+        all_sigmas,
+        args.use_aleatoric
+    )
+    sharp_R = compute_sharpness_rotation(
+        all_preds_R,
+        all_kappas,
+        args.use_aleatoric
+    )
 
     print("Translation:")
     print(f" {sharp_vec:.4f} mm | per-dim: {sharp_dims}")
@@ -380,16 +400,16 @@ def evaluate(args):
     print("\n================ 3.4 NLL =====================")
 
     print("Translation:")
-    print(f" Total:      {mean_nll_total:.4f}")
-    print(f" Epistemic:  {mean_nll_trans_epi:.4f}")
     if args.use_aleatoric:
-        print(f" Aleatoric:  {mean_nll_trans_alea:.4f}")
+        print(f" Aleatoric: {mean_nll_trans_alea:.4f}")
+    else:
+        print(f" Epistemic: {mean_nll_trans_epi:.4f}")
 
     print("\nRotation:")
-    print(f" Epistemic:  {mean_nll_rot_epi:.4f}")
     if args.use_aleatoric:
-        print(f" Aleatoric:  {mean_nll_rot_alea:.4f}")
-
+        print(f" Aleatoric: {mean_nll_rot_alea:.4f}")
+    else:
+        print(f" Epistemic: {mean_nll_rot_epi:.4f}")
 
     print("\n================ 3.5 CRPS ====================")
 
@@ -410,6 +430,7 @@ def evaluate(args):
     metadata = {
         "timestamp": timestamp,
         "modifications": args.modifications,
+        "aleatoric": args.use_aleatoric,
         "mc_samples": args.mc_samples if args.modifications in {"mc_dropout", "bayesian"} else args.bootstrap_samples if args.modifications == "ensemble" else None,
         "model_name": Path(args.path).name,
         "dataset": Path(args.path).name,
@@ -446,35 +467,9 @@ def evaluate(args):
         },
     }
 
-    # ----------- EPISTEMIC -----------
-    epistemic_metrics = {
-        "translation": {
-            "coverage": {
-                "gt": (coverage_t / n_samples).tolist(),
-                "pred": (coverage_pred_t / n_samples).tolist(),
-            },
-            "sharpness": {
-                "vector": safe(sharp_vec),
-                "per_dim": safe(sharp_dims.tolist()),
-            },
-            "nll": safe(mean_nll_trans_epi),
-            "crps": safe(mean_crps_t),
-            "corr": safe(mean_corr_t),
-        },
-        "rotation": {
-            "coverage": safe(float(np.mean(credible_region_coverages))),
-            "sharpness": {
-                "rad": safe(sharp_R),
-                "deg": safe(float(np.degrees(sharp_R))),
-            },
-            "nll_matrix_fisher": safe(mean_nll_rot_epi),
-            "crps": safe(mean_crps_r),
-            "corr": safe(mean_corr_r),
-        },
-    }
-
-    # ----------- ALEATORIC (optional) -----------
+    # ----------- ALEATORIC -----------
     if args.use_aleatoric:
+        epistemic_metrics = "N/A"
         aleatoric_metrics = {
             "translation": {
                 "nll": safe(mean_nll_trans_alea),
@@ -483,12 +478,40 @@ def evaluate(args):
                 "nll_matrix_fisher": safe(mean_nll_rot_alea),
             },
             "parameters": {
+                "sigma_mean": np.mean(np.concatenate(all_sigmas, axis=0), axis=0).tolist(),
+                "sigma_std": np.std(np.concatenate(all_sigmas, axis=0), axis=0).tolist(),
                 "kappa_mean": safe(float(np.mean(all_kappa_means_arr))),
                 "kappa_std": safe(float(np.std(all_kappa_means_arr))),
-            },
+            }
         }
     else:
         aleatoric_metrics = "N/A"
+        # ----------- EPISTEMIC -----------
+        epistemic_metrics = {
+            "translation": {
+                "coverage": {
+                    "gt": (coverage_t / n_samples).tolist(),
+                    "pred": (coverage_pred_t / n_samples).tolist(),
+                },
+                "sharpness": {
+                    "vector": safe(sharp_vec),
+                    "per_dim": safe(sharp_dims.tolist()),
+                },
+                "nll": safe(mean_nll_trans_epi),
+                "crps": safe(mean_crps_t),
+                "corr": safe(mean_corr_t),
+            },
+            "rotation": {
+                "coverage": safe(float(np.mean(credible_region_coverages))),
+                "sharpness": {
+                    "rad": safe(sharp_R),
+                    "deg": safe(float(np.degrees(sharp_R))),
+                },
+                "nll_matrix_fisher": safe(mean_nll_rot_epi),
+                "crps": safe(mean_crps_r),
+                "corr": safe(mean_corr_r),
+            },
+        }
 
     # ----------- FINAL JSON -----------
     final_json = {
@@ -511,9 +534,5 @@ def evaluate(args):
 
 
 if __name__ == '__main__':
-    parser = argparse.ArgumentParser()
-    parser.add_argument('path', help='Path to dataset root folder.')
-    parser.add_argument('-mod', '--modifications', type=str, default='none', help='Modifications to the model (e.g., mc_dropout)')
-    parser.add_argument('-mc', '--mc_samples', type=int, default=30, help='Number of MC samples to average over (for MC dropout)')
     args = parse_command_line()
     evaluate(args)

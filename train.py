@@ -374,10 +374,11 @@ def train(args):
 
 
                 else:
-                    pred_z, pred_y, pred_t = model(xyz)
                     if args.use_aleatoric:
                         pred_z, pred_y, pred_t, s_R, s_t = model(xyz)
                         sigma_t = torch.nn.functional.softplus(s_t) + 1e-6
+                    else:
+                        pred_z, pred_y, pred_t = model(xyz)
 
                 # LOSSES
                 if not is_bayesian:
