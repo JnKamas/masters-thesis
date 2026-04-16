@@ -5,7 +5,7 @@ import argparse
 import subprocess
 import shutil
 import numpy as np
-
+import time
 
 # ------------------------------------------------------------
 # CLI
@@ -240,6 +240,7 @@ def main():
     # -----------------------------
     # 1) INFERENCE
     # -----------------------------
+    start_time = time.time()
     if not args.eval_only:
 
         if args.modifications == "ensemble":
@@ -288,7 +289,7 @@ def main():
             print("▶︎ Inference:", " ".join(infer_cmd))
             if subprocess.run(infer_cmd).returncode != 0:
                 sys.exit(1)
-
+    end_time = time.time()
     # -----------------------------
     # 2) EVALUATION
     # -----------------------------
@@ -308,19 +309,10 @@ def main():
         text=True
     )
 
-    # Extract block starting with "Evaluated samples"
-    lines = result.stdout.splitlines()
-    start = next((i for i, ln in enumerate(lines) if ln.startswith("Evaluated samples")), None)
-    evaluated_block = lines[start:] if start is not None else []
-
-    # Save results
-    # out_file = save_results(proj_root, args, evaluated_block)
-
-    # print(f"✔ Results saved to: {out_file}")
     print(result.stdout)
-
+    print(f"✔ Inference completed in {end_time - start_time:.2f} s")
     sys.exit(result.returncode)
-
 
 if __name__ == "__main__":
     main()
+s
