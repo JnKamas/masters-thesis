@@ -1,7 +1,3 @@
-'''
-I integrated here many metrics, but only some of them are use in the thesis
-'''
-
 import argparse
 import glob
 import os
@@ -152,7 +148,7 @@ def compute_sharpness_rotation(all_preds_R, all_kappas=None, use_aleatoric=False
         kappas = np.concatenate(all_kappas, axis=0)  # (N,)
 
         # inverse concentration → dispersion
-        sharpness = np.mean(1.0 / (kappas + 1e-6))
+        sharpness = np.mean(1.0 / np.sqrt(kappas + 1e-6))
 
         return float(sharpness)
 

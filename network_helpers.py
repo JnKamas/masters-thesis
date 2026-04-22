@@ -42,7 +42,7 @@ def parse_command_line():
     parser.add_argument('-iw', '--input_width', type=int, default=516)
     parser.add_argument('-ih', '--input_height', type=int, default=386)
     parser.add_argument('-e', '--epochs', type=int, default=250)
-    parser.add_argument('-g', '--gpu', type=str, default='0')
+    parser.add_argument('-g', '--gpu', type=str, default='1')
     parser.add_argument('-bb', '--backbone', type=str, default='resnet34')
     parser.add_argument('-de', '--dump_every', type=int, default=0)
     parser.add_argument('-w', '--weight', type=float, default=0.1)
@@ -130,6 +130,43 @@ def remap_dropout_state_dict(base_sd, args):
 
     return new_sd
 
+def remap_aleatoric_state_dict(base_sd, args):
+    new_sd = {}
+
+    for k, v in base_sd.items():
+
+        # fc_y: 3 → 4
+        if k == "fc_y.4.weight":
+            new_w = torch.zeros(4, v.shape[1])
+            new_w[:3] = v
+            torch.nn.init.xavier_uniform_(new_w[3:])
+            new_sd[k] = new_w
+            continue
+
+        if k == "fc_y.4.bias":
+            new_b = torch.zeros(4)
+            new_b[:3] = v
+            new_sd[k] = new_b
+            continue
+
+        # fc_t: 3 → 6
+        if k == "fc_t.4.weight":
+            new_w = torch.zeros(6, v.shape[1])
+            new_w[:3] = v
+            torch.nn.init.xavier_uniform_(new_w[3:])
+            new_sd[k] = new_w
+            continue
+
+        if k == "fc_t.4.bias":
+            new_b = torch.zeros(6)
+            new_b[:3] = v
+            new_sd[k] = new_b
+            continue
+
+        # everything else
+        new_sd[k] = v
+
+    return new_sd
 
 def load_model(args):
     model = Network(args).cuda()
@@ -142,6 +179,8 @@ def load_model(args):
             state_dict = remap_dropout_state_dict(raw_sd, args)
         elif args.modifications == "bayesian":
             state_dict = remap_bayesian_state_dict(raw_sd, init_sigma=args.input_sigma, bayes_type=args.bayesian_type)
+        elif args.use_aleatoric:
+            state_dict = remap_aleatoric_state_dict(raw_sd, args)
         else:
             state_dict = raw_sd
 

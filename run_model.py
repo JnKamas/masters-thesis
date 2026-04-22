@@ -45,7 +45,7 @@ def build_parser(proj_root):
 
     # Paths
     parser.add_argument("--dataset",
-                        default=os.path.expanduser("~/thesis/large-data/test/dataset.json"),
+                        default=os.path.expanduser("~/thesis/large-data/complete/dataset.json"),
                         help="Path to dataset JSON")
     parser.add_argument("--models_dir",
                         default=os.path.join(proj_root, "models"),
@@ -322,4 +322,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-s

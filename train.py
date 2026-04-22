@@ -24,7 +24,8 @@ def rotation_aleatoric_loss(R_pred, R_gt, s_R, eps=1e-6):
 
     sigma = torch.nn.functional.softplus(s_R) + eps
 
-    loss = (theta**2) / (sigma**2) + torch.log(sigma**2)
+    # loss = (theta**2) / (sigma**2) + torch.log(sigma**2)
+    loss = theta / sigma + torch.log(sigma)
     return loss.mean()
 
 
@@ -173,10 +174,12 @@ def train(args):
                     var = sigma_t**2
                     diff = (gt_t - pred_t)
 
-                    loss_t = 0.5 * (torch.log(var) + diff**2 / var)
-                    loss_t = args.weight * loss_t.sum(dim=1).mean()
+                    # loss_t = 0.5 * (torch.log(var) + diff**2 / var)
+                    loss_t = torch.abs(diff) / sigma_t + torch.log(sigma_t)
+                    loss_t = args.weight * loss_t.mean()
 
-                    total = loss_rot + loss_t
+                    reg_sigma = 0#.01 * sigma_t.mean() # maybe if its too bad.
+                    total = loss_rot + loss_t + reg_sigma
                     return total, loss_rot, loss_t, None, None
 
                 else:
@@ -338,7 +341,7 @@ def train(args):
                             diff_i = (gt_t - pred_t_i)
 
                             loss_t_i = 0.5 * (torch.log(var_i) + diff_i**2 / var_i)
-                            loss_t_i = args.weight * loss_t_i.sum(dim=1).mean()
+                            loss_t_i = args.weight * loss_t_i.mean()
 
                             loss_i = loss_rot_i + loss_t_i
 
@@ -388,8 +391,9 @@ def train(args):
 
                         var = sigma_t**2
                         diff = (gt_t - pred_t)
-                        loss_t = 0.5 * (torch.log(var) + diff**2 / var)
-                        loss_t = args.weight * loss_t.sum(dim=1).mean()
+                        # loss_t = 0.5 * (torch.log(var) + diff**2 / var)
+                        loss_t = torch.abs(diff) / sigma_t + torch.log(sigma_t)
+                        loss_t = args.weight * loss_t.mean()
 
                         loss = loss_rot + loss_t
 
@@ -432,7 +436,7 @@ def train(args):
         # ---------------------------------------------------------------------
         # Checkpoints & logging
         # ---------------------------------------------------------------------
-        if args.dump_every != 0 and e % args.dump_every == 0:
+        if True: #args.dump_every != 0 and e % args.dump_every == 0:
             print("Saving checkpoint")
             os.makedirs("checkpoints", exist_ok=True)
             torch.save(model.state_dict(), f"checkpoints/{e:03d}.pth")
@@ -458,6 +462,7 @@ def train(args):
     plt.figure()
     plt.plot(epochs, train_loss_all, label="train")
     plt.plot(epochs, val_loss_all, label="val")
+    plt.yscale("log")
     plt.xlabel("epoch")
     plt.ylabel("loss")
     plt.legend()

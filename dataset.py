@@ -75,7 +75,7 @@ class Dataset(Dataset):
         :return: pointcloud wit shape (3, height, width)
         """
         exr_path = os.path.join(self.dataset_dir, entry['exr_positions_path'])
-        exr_path = exr_path.replace("\\", "/") # #JK EDIT
+        exr_path = exr_path.replace("\\", "/") # #JK EDIT - change paths to linux
         xyz = cv2.imread(exr_path,  cv2.IMREAD_ANYCOLOR | cv2.IMREAD_ANYDEPTH)
         if xyz is None:
             print(exr_path)

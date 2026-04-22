@@ -166,13 +166,27 @@ def evaluate(args):
         all_gts_t.append(gt_t)
         all_gts_R.append(gt_R1)  # account for 180° symmetry later
 
-        for j in range(3):
-            lo = np.percentile(pts_arr[:, j], 2.5)
-            hi = np.percentile(pts_arr[:, j], 97.5)
-            if lo <= gt_t[j] <= hi:
-                coverage_t[j] += 1
-            if lo <= mean_t[j] <= hi:
-                coverage_pred_t[j] += 1
+        if args.use_aleatoric:
+            mu = mean_t
+            sigma = np.sqrt(np.mean(sigmas**2, axis=0))
+
+            for j in range(3):
+                lo = mu[j] - 1.96 * sigma[j]
+                hi = mu[j] + 1.96 * sigma[j]
+
+                if lo <= gt_t[j] <= hi:
+                    coverage_t[j] += 1
+
+                if lo <= mu[j] <= hi:
+                    coverage_pred_t[j] += 1
+        else:
+            for j in range(3):
+                lo = np.percentile(pts_arr[:, j], 2.5)
+                hi = np.percentile(pts_arr[:, j], 97.5)
+                if lo <= gt_t[j] <= hi:
+                    coverage_t[j] += 1
+                if lo <= mean_t[j] <= hi:
+                    coverage_pred_t[j] += 1
 
         angs = []
         for r in rots:
@@ -184,15 +198,52 @@ def evaluate(args):
         # Compute mean rotation
         R_bar_so3 = mean_rotation_SVD(rots)
 
-        # 1. Credible region radius (SO(3) ball, 95%)
-        r_alpha, _ = credible_region_radius(rots, R_bar_so3, alpha=0.95)
-        credible_region_radii.append(r_alpha)
-        #  -- empirical coverage: does GT lie inside that ball? --
-        # account for 180° symmetry
+        # 1. Credible region radius (for Rotation)
         d1 = geodesic_distance(gt_R1, R_bar_so3)
         d2 = geodesic_distance(gt_R1 @ S, R_bar_so3)
-        covered = (min(d1, d2) <= r_alpha)
-        credible_region_coverages.append(covered)
+        angle = min(d1, d2)
+        if args.use_aleatoric: # POTENTIAL AI SLOP, NEEDS REEVALUATION.
+            '''
+            “We approximate the Matrix Fisher distribution locally via isotropic Gaussian noise in the tangent space of SO(3), which is accurate for concentrated distributions.”
+            High-concentration Matrix Fisher ≈ isotropic Gaussian on SO(3) tangent space [1,2].
+            Sample ω ~ N(0, (κ_mean)^(-1/2) I_3), then R = R_bar @ Exp(ω) via Rodrigues [2].
+            95th percentile geodesic radius gives credible region [3].
+            
+            [1] Jupp & Mardia (1989). "A Unified View of Circular Distributions", Annals of Statistics
+            [2] Moakher (2006). "Means and averaging in the group of rotations", SIAM J. Matrix Anal. Appl. 
+            [3] Mardia & Jupp (2000). "Directional Statistics", Wiley, Ch. 11.5
+            '''
+            kappa_mean = float(np.mean(kappas))
+
+            # number of samples
+            N = 200
+
+            # sample small rotation vectors in tangent space
+            sigma = 1.0 / np.sqrt(kappa_mean + 1e-6)
+            omega = np.random.randn(N, 3) * sigma  # (N,3)
+
+            # map to SO(3)
+            R_samples = []
+            for w in omega:
+                R_delta = sciR.from_rotvec(w).as_matrix()
+                R_samples.append(R_bar_so3 @ R_delta)
+
+            R_samples = np.stack(R_samples)
+
+            r_alpha, _ = credible_region_radius(R_samples, R_bar_so3, alpha=0.95)
+
+            credible_region_radii.append(r_alpha)
+
+            covered = (angle <= r_alpha)
+
+            credible_region_coverages.append(covered)
+
+        else:
+            r_alpha, _ = credible_region_radius(rots, R_bar_so3, alpha=0.95)
+            credible_region_radii.append(r_alpha)
+
+            covered = (angle <= r_alpha)
+            credible_region_coverages.append(covered)
 
         # 3. NLL rotation
 
@@ -304,7 +355,7 @@ def evaluate(args):
     errors_r = []
     uncertainties_r = []
 
-    for preds_R, gt_R in zip(all_preds_R, all_gts_R):
+    for idx, (preds_R, gt_R) in enumerate(zip(all_preds_R, all_gts_R)):
         preds_R_arr = np.array(preds_R)
 
         R_bar = mean_rotation_SVD(preds_R_arr)
@@ -315,7 +366,10 @@ def evaluate(args):
         )
 
         angles = [geodesic_distance(R_bar, R) for R in preds_R_arr]
-        unc = np.std(angles)
+        if args.use_aleatoric:
+            unc = float(np.mean(1.0 / np.sqrt(all_kappas[idx] + 1e-6)))
+        else:
+            unc = np.std(angles)
 
         errors_r.append(err)
         uncertainties_r.append(unc)
@@ -473,6 +527,8 @@ def evaluate(args):
         aleatoric_metrics = {
             "translation": {
                 "nll": safe(mean_nll_trans_alea),
+                "gt": (coverage_t / n_samples).tolist(),
+                "pred": (coverage_pred_t / n_samples).tolist(),
             },
             "rotation": {
                 "nll_matrix_fisher": safe(mean_nll_rot_alea),
