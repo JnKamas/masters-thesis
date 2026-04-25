@@ -155,7 +155,7 @@ def evaluate(args):
 
 
         # ---- Old metrics (mean only) ----
-        eTE_list.append(calculate_eTE(gt_t, mean_t))
+        eTE_list.append(np.mean([calculate_eTE(gt_t, t_i) for t_i in ts]))
         if np.array_equal(pr_R, np.eye(3, 3)):
             eRE_list.append(float("inf"))
         else:

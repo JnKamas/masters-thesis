@@ -1,6 +1,15 @@
 # #!/bin/bash
 # set -e
 
+for i in {1..10}; do python ~/thesis/masters-thesis/run_model.py -mod mc_dropout -mc 10 -dpt 0.1 -dpr 0.1 -dpb 0.1 quartres_resnet34_synth; done
+python ~/thesis/masters-thesis/merge_jsons.py MC_SAMPLES_10
+for i in {1..10}; do python ~/thesis/masters-thesis/run_model.py -mod mc_dropout -mc 20 -dpt 0.1 -dpr 0.1 -dpb 0.1 quartres_resnet34_synth; done
+python ~/thesis/masters-thesis/merge_jsons.py MC_SAMPLES_20
+for i in {1..10}; do python ~/thesis/masters-thesis/run_model.py -mod mc_dropout -mc 50 -dpt 0.1 -dpr 0.1 -dpb 0.1 quartres_resnet34_synth; done
+python ~/thesis/masters-thesis/merge_jsons.py MC_SAMPLES_50
+for i in {1..10}; do python ~/thesis/masters-thesis/run_model.py -mod mc_dropout -mc 100 -dpt 0.1 -dpr 0.1 -dpb 0.1 quartres_resnet34_synth; done
+python ~/thesis/masters-thesis/merge_jsons.py MC_SAMPLES_100
+
 # for i in {1..10}; do python ~/thesis/masters-thesis/run_model.py -mod mc_dropout -dpt 0.1 -dpr 0.1 quartres_resnet34_synth; done
 # python ~/thesis/masters-thesis/merge_jsons.py ADD_DROP_HEADS
 # for i in {1..10}; do python ~/thesis/masters-thesis/run_model.py -mod mc_dropout -dpt 0.1 -dpr 0.1 -dpb 0.1 quartres_resnet34_synth; done
@@ -25,8 +34,8 @@
 # for i in {1..10}; do python ~/thesis/masters-thesis/run_model.py -mod mc_dropout -dpb 0.40 quartres_resnet34_synth; done
 # python ~/thesis/masters-thesis/merge_jsons.py DROP_BB_040
 
-for i in {1..10}; do python ~/thesis/masters-thesis/run_model.py -mod mc_dropout -dpt 0.01 quartres_resnet34_synth; done
-python ~/thesis/masters-thesis/merge_jsons.py DROP_TRANS_001
+# for i in {1..10}; do python ~/thesis/masters-thesis/run_model.py -mod mc_dropout -dpt 0.01 quartres_resnet34_synth; done
+# python ~/thesis/masters-thesis/merge_jsons.py DROP_TRANS_001
 # for i in {1..10}; do python ~/thesis/masters-thesis/run_model.py -mod mc_dropout -dpt 0.02 quartres_resnet34_synth; done
 # python ~/thesis/masters-thesis/merge_jsons.py DROP_TRANS_002
 # for i in {1..10}; do python ~/thesis/masters-thesis/run_model.py -mod mc_dropout -dpt 0.05 quartres_resnet34_synth; done
@@ -40,8 +49,8 @@ python ~/thesis/masters-thesis/merge_jsons.py DROP_TRANS_001
 # for i in {1..10}; do python ~/thesis/masters-thesis/run_model.py -mod mc_dropout -dpt 0.20 quartres_resnet34_synth; done
 # python ~/thesis/masters-thesis/merge_jsons.py DROP_TRANS_020
 
-for i in {1..10}; do python ~/thesis/masters-thesis/run_model.py -mod mc_dropout -dpr 0.02 quartres_resnet34_synth; done
-python ~/thesis/masters-thesis/merge_jsons.py DROP_ROT_002
+# for i in {1..10}; do python ~/thesis/masters-thesis/run_model.py -mod mc_dropout -dpr 0.02 quartres_resnet34_synth; done
+# python ~/thesis/masters-thesis/merge_jsons.py DROP_ROT_002
 # for i in {1..10}; do python ~/thesis/masters-thesis/run_model.py -mod mc_dropout -dpr 0.05 quartres_resnet34_synth; done
 # python ~/thesis/masters-thesis/merge_jsons.py DROP_ROT_005
 # for i in {1..10}; do python ~/thesis/masters-thesis/run_model.py -mod mc_dropout -dpr 0.1 quartres_resnet34_synth; done
