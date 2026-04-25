@@ -24,9 +24,9 @@ def build_parser(proj_root):
 
     # Model / backbone
     parser.add_argument("-mod", "--modifications",
-                        choices=["mc_dropout", "bayesian", "ensemble", "ensemble_mc_dropout"],
+                        choices=["mc_dropout", "bayesian", "ensemble"],
                         default=None,
-                        help="Modification type (options: mc_dropout, bayesian, ensemble, ensemble_mc_dropout)")
+                        help="Modification type (options: mc_dropout, bayesian, ensemble)")
     parser.add_argument("-bb", "--backbone",
                         default="resnet34",
                         help="Backbone for inference")
@@ -122,7 +122,7 @@ def build_eval_cmd(args, eval_script, inference_output_dir):
     mc_samples = args.mc_samples
 
     # For ensemble, mc_samples = number of ensemble members
-    if args.modifications in ["ensemble", "ensemble_mc_dropout"]:
+    if args.modifications == "ensemble":
         models_dir = os.path.join(args.models_dir, args.model_name)
         mc_samples = len([
             f for f in os.listdir(models_dir)
@@ -302,7 +302,7 @@ def main():
     # -----------------------------
     eval_input_dir = inference_output_dir
 
-    if args.modifications in ["ensemble", "ensemble_mc_dropout"]:
+    if args.modifications == "ensemble":
         eval_input_dir = merge_ensemble_as_mc(inference_output_dir)
 
     eval_cmd = build_eval_cmd(args, eval_script, eval_input_dir)

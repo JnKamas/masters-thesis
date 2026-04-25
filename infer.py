@@ -92,7 +92,7 @@ def infer(args, export_to_folder=True):
 
     with torch.no_grad():
         if args.modifications == "mc_dropout":
-            model.train()
+            model.eval()
             enable_dropout(model)
 
         PRINT_PREDS = True   # set True to print GT + predictions

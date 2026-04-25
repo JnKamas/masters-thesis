@@ -30,7 +30,8 @@ def generate_dataset(path, ignore_bad=True, ignore_bad_det=False):
     """
     dirs = [dir for dir in os.listdir(path) if os.path.isdir(os.path.join(path, dir))]
 
-    entries = []
+    train_val_entries = []
+    test_entries = []
 
     for dir in dirs:
         if ignore_bad:
@@ -41,7 +42,8 @@ def generate_dataset(path, ignore_bad=True, ignore_bad_det=False):
             good_txt_files = [f for f in os.listdir(os.path.join(path, dir)) if '.txt' in f
                               and 'pred' not in f
                               and 'icp' not in f]
-        for txt_file in good_txt_files:
+        files = sorted(good_txt_files)
+        for i, txt_file in enumerate(files):
             txt_path = os.path.join(path, dir, txt_file)
             transform = np.loadtxt(txt_path, max_rows=1).reshape([4, 4]).T
             if ignore_bad_det and np.linalg.det(transform) < 0.0:
@@ -59,7 +61,10 @@ def generate_dataset(path, ignore_bad=True, ignore_bad_det=False):
                      'txt_path': os.path.join(dir, txt_file), 'corners': corners.tolist(),
                      'orig_transform': transform.tolist(), 'proper_transform': proper_transform.tolist()}
 
-            entries.append(entry)
+            if i < len(files) * 0.8:  # 80% for training and validation
+                train_val_entries.append(entry)
+            else:
+                test_entries.append(entry)
 
     if ignore_bad_det:
         json_name = 'dataset_posdet.json' if ignore_bad else 'dataset_all_posdet.json'
@@ -67,12 +72,20 @@ def generate_dataset(path, ignore_bad=True, ignore_bad_det=False):
         json_name = 'dataset.json' if ignore_bad else 'dataset_all.json'
     json_path = os.path.join(path, json_name)
 
-    print("Dataset contains {} entries".format(len(entries)))
+    print("Dataset contains {} entries".format(len(train_val_entries) + len(test_entries)))
     print("Saving to: ", json_path)
 
-    with open(json_path, 'w') as f:
-        json.dump(entries, f, indent=None)
+    train_path = os.path.join(path, 'train_val.json')
+    test_path = os.path.join(path, 'test.json')
 
+    with open(train_path, 'w') as f:
+        json.dump(train_val_entries, f, indent=None)
+
+    with open(test_path, 'w') as f:
+        json.dump(test_entries, f, indent=None)
+
+    print(f"Train/Val: {len(train_val_entries)}")
+    print(f"Test: {len(test_entries)}")
 
 if __name__ == '__main__':
     """
@@ -85,6 +98,6 @@ if __name__ == '__main__':
     path = args.path
 
     generate_dataset(path, ignore_bad=True)
-    generate_dataset(path, ignore_bad=False)
-    generate_dataset(path, ignore_bad=True, ignore_bad_det=True)
-    generate_dataset(path, ignore_bad=False, ignore_bad_det=True)
+    # generate_dataset(path, ignore_bad=False)
+    # generate_dataset(path, ignore_bad=True, ignore_bad_det=True)
+    # generate_dataset(path, ignore_bad=False, ignore_bad_det=True)

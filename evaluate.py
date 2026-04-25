@@ -480,6 +480,7 @@ def evaluate(args):
 
     # ---------------- JSON EXPORT ----------------
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    
 
     metadata = {
         "timestamp": timestamp,
@@ -487,8 +488,8 @@ def evaluate(args):
         "aleatoric": args.use_aleatoric,
         "mc_samples": args.mc_samples if args.modifications in {"mc_dropout", "bayesian"} else args.bootstrap_samples if args.modifications == "ensemble" else None,
         "model_name": Path(args.path).name,
-        "dataset": Path(args.path).name,
         "num_samples": len(eTE_list),
+        "split": "val" if len(eTE_list) == 169 else "test" # hardcode quick fix, can be improved by parsing file paths
     }
 
     def safe(val):
