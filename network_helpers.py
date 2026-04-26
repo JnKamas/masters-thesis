@@ -52,7 +52,7 @@ def parse_command_line():
     parser.add_argument('-wp', '--weights_path', type=str, default=None)
     parser.add_argument('-vis', '--visualize', action='store_true', default=False)
     parser.add_argument('-mod', '--modifications', type=str, default=None)
-    parser.add_argument('-mc', '--mc_samples', type=int, default=30)
+    parser.add_argument('-mc', '--mc_samples', type=int, default=50)
     parser.add_argument('-dpt', '--dropout_prob_trans', type=float, default=0)
     parser.add_argument('-dpr', '--dropout_prob_rot', type=float, default=0)
     parser.add_argument('-dpb', '--dropout_prob_backbone', type=float, default=0.0, help='Dropout probability for layer after backbone')
