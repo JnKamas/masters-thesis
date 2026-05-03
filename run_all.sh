@@ -137,3 +137,20 @@
 # for i in {1..10}; do python ~/thesis/masters-thesis/run_model.py -mod bayesian -sn 5 FINAL_CCW3_BATCH12; done
 # python ~/thesis/masters-thesis/merge_jsons.py FINAL_CCW3_BATCH12
 
+# TEST
+
+# for i in {1..10}; do python ~/thesis/masters-thesis/run_model.py -mod mc_dropout -dpt 0.02 -dpr 0.1 quartres_resnet34_synth; done
+# python ~/thesis/masters-thesis/merge_jsons.py DROPOUT_TEST
+# for i in {1..10}; do python ~/thesis/masters-thesis/run_model.py -mod ensemble -bs 30 FINAL_ensemble_mod1; done
+# python ~/thesis/masters-thesis/merge_jsons.py ENSEMBLE_TEST
+# for i in {1..10}; do python ~/thesis/masters-thesis/run_model.py -mod bayesian -ccw 1e-5 FINAL_CCW5_BATCH12; done
+# python ~/thesis/masters-thesis/merge_jsons.py BAYESIAN_TEST
+
+# TEST LARGE
+
+# for i in {1..10}; do python ~/thesis/masters-thesis/run_model.py -mod mc_dropout -dpb 0.02 -dpr 0.1 FINAL_LARGE_BASELINE; done
+# python ~/thesis/masters-thesis/merge_jsons.py LARGE_TEST_DROPOUT
+
+
+for i in {1..10}; do python ~/thesis/masters-thesis/run_model.py -mod bayesian -ccw 1e-5 FINAL_LARGE_BNN; done
+python ~/thesis/masters-thesis/merge_jsons.py LARGE_TEST_BNN

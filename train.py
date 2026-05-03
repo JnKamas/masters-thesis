@@ -24,8 +24,8 @@ def rotation_aleatoric_loss(R_pred, R_gt, s_R, eps=1e-6):
 
     sigma = torch.nn.functional.softplus(s_R) + eps
 
-    # loss = (theta**2) / (sigma**2) + torch.log(sigma**2)
-    loss = theta / sigma + torch.log(sigma)
+    loss = (theta**2) / (sigma**2) + torch.log(sigma**2)
+    # loss = theta / sigma + torch.log(sigma)
     return loss.mean()
 
 
@@ -174,8 +174,8 @@ def train(args):
                     var = sigma_t**2
                     diff = (gt_t - pred_t)
 
-                    # loss_t = 0.5 * (torch.log(var) + diff**2 / var)
-                    loss_t = torch.abs(diff) / sigma_t + torch.log(sigma_t)
+                    loss_t = 0.5 * (torch.log(var) + diff**2 / var)
+                    # loss_t = torch.abs(diff) / sigma_t + torch.log(sigma_t)
                     loss_t = args.weight * loss_t.mean()
 
                     reg_sigma = 0#.01 * sigma_t.mean() # maybe if its too bad.
@@ -391,8 +391,8 @@ def train(args):
 
                         var = sigma_t**2
                         diff = (gt_t - pred_t)
-                        # loss_t = 0.5 * (torch.log(var) + diff**2 / var)
-                        loss_t = torch.abs(diff) / sigma_t + torch.log(sigma_t)
+                        loss_t = 0.5 * (torch.log(var) + diff**2 / var)
+                        # loss_t = torch.abs(diff) / sigma_t + torch.log(sigma_t)
                         loss_t = args.weight * loss_t.mean()
 
                         loss = loss_rot + loss_t

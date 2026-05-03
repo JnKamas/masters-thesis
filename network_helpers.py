@@ -42,7 +42,7 @@ def parse_command_line():
     parser.add_argument('-iw', '--input_width', type=int, default=516)
     parser.add_argument('-ih', '--input_height', type=int, default=386)
     parser.add_argument('-e', '--epochs', type=int, default=250)
-    parser.add_argument('-g', '--gpu', type=str, default='1')
+    parser.add_argument('-g', '--gpu', type=str, default='0')
     parser.add_argument('-bb', '--backbone', type=str, default='resnet34')
     parser.add_argument('-de', '--dump_every', type=int, default=0)
     parser.add_argument('-w', '--weight', type=float, default=0.1)
@@ -180,7 +180,10 @@ def load_model(args):
         elif args.modifications == "bayesian":
             state_dict = remap_bayesian_state_dict(raw_sd, init_sigma=args.input_sigma, bayes_type=args.bayesian_type)
         elif args.use_aleatoric:
-            state_dict = remap_aleatoric_state_dict(raw_sd, args)
+            if any("fc_y.4.weight" in k and raw_sd[k].shape[0] > 3 for k in raw_sd):
+                state_dict = raw_sd
+            else:
+                state_dict = remap_aleatoric_state_dict(raw_sd, args)
         else:
             state_dict = raw_sd
 
