@@ -205,7 +205,7 @@ def evaluate(args):
         d1 = geodesic_distance(gt_R1, R_bar_so3)
         d2 = geodesic_distance(gt_R1 @ S, R_bar_so3)
         angle = min(d1, d2)
-        if args.use_aleatoric: # POTENTIAL AI SLOP, NEEDS REEVALUATION.
+        if args.use_aleatoric:
             '''
             “We approximate the Matrix Fisher distribution locally via isotropic Gaussian noise in the tangent space of SO(3), which is accurate for concentrated distributions.”
             High-concentration Matrix Fisher ≈ isotropic Gaussian on SO(3) tangent space [1,2].
