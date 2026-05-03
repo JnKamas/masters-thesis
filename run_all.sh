@@ -137,3 +137,8 @@
 # for i in {1..10}; do python ~/thesis/masters-thesis/run_model.py -mod bayesian -sn 5 FINAL_CCW3_BATCH12; done
 # python ~/thesis/masters-thesis/merge_jsons.py FINAL_CCW3_BATCH12
 
+
+# for i in {1..10}; do python ~/thesis/masters-thesis/run_model.py -mod bayesian -ccw 1e-5 FINAL_LARGE_BNN_FT; done
+# python ~/thesis/masters-thesis/merge_jsons.py FINAL_LARGE_BNN_FT
+for i in {1..10}; do python ~/thesis/masters-thesis/run_model.py -mod bayesian -ccw 1e-5 BNN_BEST_EPOCH; done
+python ~/thesis/masters-thesis/merge_jsons.py BNN_BEST_EPOCH
