@@ -165,8 +165,6 @@ def compute_sharpness_rotation(all_preds_R, all_kappas=None, use_aleatoric=False
         return float(np.mean(sharp_list))
 
 
-# ChatGPT says this: We use a simplified isotropic approximation of the normalization constant.
-# Still requires more reserch, but we are very close.
 def matrix_fisher_nll(R_pred, R_gt, kappa, eps=1e-8):
     """
     Matrix–Fisher negative log-likelihood on SO(3).

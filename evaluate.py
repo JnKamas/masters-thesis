@@ -592,7 +592,44 @@ def evaluate(args):
 
     print(f"\n✔ JSON results saved to: {out_file}")
 
+        # --- SAVE FOR PLOTTING ---
+    out_dir = eval_dir / f"evaluation_{timestamp}"
+    out_dir.mkdir(parents=True, exist_ok=True)
 
-if __name__ == '__main__':
+    np.save(out_dir / "errors_t.npy", np.array(errors_t))
+    np.save(out_dir / "uncertainties_t.npy", np.array(uncertainties_t))
+
+    np.save(out_dir / "errors_r.npy", np.array(errors_r))
+    np.save(out_dir / "uncertainties_r.npy", np.array(uncertainties_r))
+
+    # =========================
+    # SAVE EXTRA DEBUG DATA
+    # =========================
+
+    pred_mean_R = []
+    pred_mean_t = []
+
+    gt_R_all = []
+    gt_t_all = []
+
+    for preds_R, preds_t, gt_R, gt_t in zip(
+        all_preds_R,
+        all_preds_t,
+        all_gts_R,
+        all_gts_t
+    ):
+        pred_mean_R.append(mean_rotation_SVD(np.array(preds_R)))
+        pred_mean_t.append(np.mean(np.array(preds_t), axis=0))
+
+        gt_R_all.append(gt_R)
+        gt_t_all.append(gt_t)
+
+    np.save(out_dir / "pred_R.npy", np.array(pred_mean_R))
+    np.save(out_dir / "pred_t.npy", np.array(pred_mean_t))
+
+    np.save(out_dir / "gt_R.npy", np.array(gt_R_all))
+    np.save(out_dir / "gt_t.npy", np.array(gt_t_all))
+
+if __name__ == '__main__':  
     args = parse_command_line()
     evaluate(args)
